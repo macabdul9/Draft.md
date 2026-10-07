@@ -21,7 +21,7 @@ The package script produces these files in the ignored `release/` directory:
 - `install.sh`: curl-compatible bootstrap script.
 - `installer.py`: standard-library installer downloaded by the bootstrap.
 
-Install locally using `python3 packaging/installer.py --archive release/draft-md-1.0.0.tar.gz`. Custom `--install-dir` and `--bin-dir` arguments allow isolated testing without modifying normal shell commands. No shell profiles are edited.
+Install locally using `python3 packaging/installer.py --archive release/draft-md-0.0.1.tar.gz`. Custom `--install-dir` and `--bin-dir` arguments allow isolated testing without modifying normal shell commands. No shell profiles are edited.
 
 The installer stages and validates archives before updating the `current` symlink. It rejects traversal, duplicate members, symlinks, hard links, and device entries. It refuses unrelated launcher collisions, retains older versions, and switches the current app with an atomic symlink replacement. It does not encrypt browser storage or perform cross-process filesystem locking for note writes.
 
@@ -29,11 +29,15 @@ The server serves only its installed `dist/` directory, never the installation's
 
 ## Publish a release
 
-The repository is `macabdul9/Draft.md`. The release workflow packages on a manual dispatch and uploads a reviewable workflow artifact. A pushed version tag additionally publishes the assets as a GitHub release. Publishing a tag is a remote action; the local scripts do not push or create a release themselves.
+The repository is `macabdul9/Draft.md`. The release workflow packages on a manual dispatch and uploads a reviewable workflow artifact. A pushed version tag or a published release additionally publishes installer assets. Publishing a tag is a remote action; the local scripts do not push or create a release themselves.
+
+For an existing release with no assets, push the updated workflow, then open **Actions → Package local installer → Run workflow**, choose the branch to build (normally `main`), and enter `v0.0.1` in **release_tag**. This builds the selected branch and attaches the installer assets to the existing release. This also lets a corrected branch repair a failed release without moving its tag. Leave the input empty to build an artifact without publishing. Non-version release names such as `beta` retain the app version from `package.json`; `v` tags must match the package version.
+
+Alternatively, upload all five files from the local `release/` folder to the existing release through **Releases → Edit → Attach binaries**, then save it. Required assets are `install.sh`, `installer.py`, `release.json`, `SHA256SUMS`, and `draft-md-VERSION.tar.gz`. GitHub's automatic source archives do not contain a ready-to-install build.
 
 1. Review and commit the changes. Update the package version and lockfile when changing versions.
 2. Run the app checks, browser workflows, Python checks, ShellCheck, and CLI tests.
-3. Push the reviewed branch and a matching tag, such as `v1.0.0` for package version `1.0.0`.
+3. Push the reviewed branch and a matching tag, such as `v0.0.1` for package version `0.0.1`.
 4. Allow `.github/workflows/release.yml` to finish and verify the five release assets.
 5. Test the public install command in a fresh profile or with custom installation directories.
 

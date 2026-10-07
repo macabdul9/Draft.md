@@ -36,7 +36,9 @@ A private, local-first Markdown workspace for notes, documentation, plans, and d
 
 The local installer supports macOS and Linux and requires **Python 3.10+**, Bash, and curl. It installs the prebuilt app; Node.js, npm, and Git are not needed to run it.
 
-Once a versioned GitHub release has been published:
+The curl command requires the five installer assets attached to a GitHub release. A release containing only GitHub’s automatic source ZIP/tarball is insufficient. If it returns **404**, use the local-build installation below or follow the [release setup instructions](docs/distribution.md#publish-a-release).
+
+Once the installer assets have been published:
 
 ```sh
 curl -fsSL https://github.com/macabdul9/Draft.md/releases/latest/download/install.sh | bash
@@ -78,7 +80,7 @@ For custom locations, download the installer and pass `--install-dir` and `--bin
 npm ci
 npm run build
 npm run package:release
-python3 packaging/installer.py --archive release/draft-md-1.0.0.tar.gz
+python3 packaging/installer.py --archive release/draft-md-0.0.1.tar.gz
 ```
 
 The public curl URL needs the release assets; adding these files to the repository alone does not publish a release. See [distribution and release instructions](docs/distribution.md). Windows users can use the browser app; this installer does not provide a native Windows executable.

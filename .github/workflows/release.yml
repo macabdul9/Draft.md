@@ -2,7 +2,14 @@ name: Package local installer
 on:
   push:
     tags: ['v*']
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release tag to attach installer assets to (leave empty to build only)'
+        required: false
+        type: string
 permissions:
   contents: read
 jobs:
@@ -22,14 +29,14 @@ jobs:
       - run: npm run lint && npm test && npm run build
       - run: python3 scripts/package-release.py
         env:
-          DRAFT_RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          DRAFT_RELEASE_TAG: ${{ startsWith(inputs.release_tag, 'v') && inputs.release_tag || startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
       - run: python3 -m unittest discover -s packaging/tests -v
       - uses: actions/upload-artifact@v4
         with:
           name: draft-md-local-installation
           path: release/
   publish:
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     needs: package
     runs-on: ubuntu-latest
     permissions:
@@ -41,7 +48,13 @@ jobs:
           name: draft-md-local-installation
           path: release/
       - name: Publish versioned release assets
-        run: gh release create "$DRAFT_RELEASE_TAG" release/* --verify-tag --title "$DRAFT_RELEASE_TAG" --generate-notes
+        run: |
+          set -euo pipefail
+          if gh release view "$DRAFT_RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$DRAFT_RELEASE_TAG" release/* --clobber
+          else
+            gh release create "$DRAFT_RELEASE_TAG" release/* --verify-tag --title "$DRAFT_RELEASE_TAG" --generate-notes
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
-          DRAFT_RELEASE_TAG: ${{ github.ref_name }}
+          DRAFT_RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name || github.ref_name }}
