@@ -75,7 +75,7 @@ export function Palette({
               ? 'What would you like to do?'
               : kind === 'quick'
                 ? 'Find a file by name or path…'
-                : 'Search your research…'
+                : 'Search your workspace…'
           }
           value={query}
           onInput={(e) => setQuery(e.currentTarget.value)}

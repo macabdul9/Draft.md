@@ -6,12 +6,34 @@ Implementation verified on October 7, 2026, on Apple M4 / 24 GB RAM / macOS Darw
 
 - `npm run lint`: passed.
 - `npm run typecheck`: passed.
-- `npm test`: 30 tests passed across six files.
+- `npm test`: 47 tests passed across ten files.
 - `npm run build`: passed; `dist/` is a static SPA with manifest, icons, service worker, and bundled/lazy assets. Vite reports large lazy editor/Mermaid chunks; size is documented rather than suppressed.
-- `DRAFT_BROWSER_CHANNEL=chrome npm run test:e2e`: nine production browser workflows passed.
+- `DRAFT_BROWSER_CHANNEL=chrome npm run test:e2e`: all 17 production browser workflows passed in the final full run.
 - `npm audit`: zero vulnerabilities reported at verification time.
 
-Core tests exercise exact Markdown, nested/binary filesystem operations, collisions, partial moves, a source changing during copying, invalid paths, archive round trips/traversal rejection, permissions, IndexedDB reopening/recovery, delayed and immediate saves, edits during writes, dirty tab closure, failed writes/checkpoints, deleted originals, stale/concurrent reads, conflicts and explicit resolution, search updates/line targets, knowledge parsing, tables, math/Markdown sanitization and blocked remote images.
+## Local installation and distribution checks
+
+Fenced LaTeX tables were verified in Preview and Rich Markdown, including booktabs rules, captions, alignment, cell math, and saving/reopening unchanged source. Unit coverage includes the supplied 3×3 empty table, the menu starter, merged cells, escaped separators, nested formatting, malformed input, unsupported commands, size bounds, HTML escaping, and language-fence isolation. The light-theme table screenshot was visually inspected.
+
+Backslash block/task commands, table-row insertion, keyboard acceptance with Enter/Tab, date insertion, relative file links, and the empty-file guide disappearing and returning were verified in Chrome. The default remains light even with dark OS preferences; an explicitly saved dark choice survives reload. Unit tests cover Unicode queries and suppress triggers inside email addresses, paths, code, links, and inline math.
+
+The To-do List workspace and file templates were verified with quick task entry, Rich Markdown checkbox toggling, completed-task counts, exact saved `- [x]` Markdown, cancellation without file creation, and reopening. Task-count tests also verify nested tasks and exclusion of code examples. New notes now choose a template before file creation. Preview remains a read-only rendering of task status; tasks are toggled in Rich Markdown.
+
+The general-purpose UI and new light-theme README screenshot were verified with the latest production build. The app's tagline is “Your work, in Markdown.” Generic Project Notes and Meeting Notes templates supplement the optional academic templates.
+
+- Python 3.14.7 on macOS: eight CLI/installer/statistics tests passed. Tests cover real curl-to-Bash installation over a local HTTPS fixture, checksum rejection, archive traversal/link/device rejection, unrelated launcher collision refusal, reinstall, aliases and optional shell helpers, server reuse, status, shutdown, host/path/shutdown-token boundaries, uninstall preserving notes, pagination, and avoiding mixed/overlapping download metrics.
+- Ruff formatting and lint checks passed for the Python files. ShellCheck passed for `install.sh` and the sourced shell helpers.
+- `npm run package:release` produced a prebuilt application archive and release manifest/checksum/bootstrap assets.
+- The actual archive was installed in `~/.local/share/draft-md`, with `draft.md`, `draftmd`, and `dmd` launchers in `~/.local/bin`. Its server launched on `http://127.0.0.1:4387`.
+- A separate Chrome workflow against that installed server verified workspace creation, editing, live split preview, saving, actual network-disabled reload, and reopening the stored workspace.
+- The documentation screenshot script captured and the editor image was visually inspected in light theme, using generic project notes.
+- The download statistics script queried the public repository and accurately reported “not released”; no release artifact downloads or extension installs were fabricated.
+
+Release and statistics workflows are implemented but have not run on GitHub. No tag or public release was published as part of local verification; the public curl URL remains unavailable until its assets are published. Local HTTPS fixture verification is not a claim that the GitHub installer endpoint is live. Python 3.10/Linux verification is configured in the release workflow and remains pending execution there. Chrome extension feasibility is documented; no extension was built or submitted.
+
+Core tests exercise exact Markdown, nested/binary filesystem operations, collisions, partial moves, a source changing during copying, invalid paths, archive round trips/traversal rejection, permissions, IndexedDB reopening/recovery, delayed and immediate saves, edits during writes, dirty tab closure, failed writes/checkpoints, deleted originals, stale/concurrent reads, conflicts and explicit resolution, search updates/line targets, knowledge parsing, tables, math/Markdown sanitization and blocked remote images. Repository tests cover URL validation, commit-pinned downloads, binary preservation, skipped symbolic links/submodules, branch names with slashes, truncated/unsafe/oversized listings, rate limits, cancellation, unexpected byte sizes, and collision preservation.
+
+Additional browser checks cover the default Rich Markdown/Preview split, live preview updates, narrow-screen stacking, repository imports with offline reopening, repository error handling with an active workspace, cancellation before workspace creation, and a local import that preserves an existing same-name folder. Repository fixtures mock GitHub responses; local-folder tests use real OPFS handles returned by a stubbed picker. A separate live Chrome check successfully imported the public `octocat/Spoon-Knife` repository directly from GitHub and displayed its README, without mocked network responses.
 
 Browser workflows exercise browser workspace creation and reopening, tabs, search, ZIP download, a native-adapter same-handle write and external conflict, math/Mermaid/callout/security rendering, fallback messaging and theme/focus restoration, offline reopening and previously unused lazy renderers, nested screenshot paste and relative references, local image view, duplicate/move/delete, local PDF embedding, invalid-diagram errors, cursor/undo restoration across tabs, and folder-import collision handling with intact relative links. Offline testing actually disables networking, reloads the application, reopens a stored workspace, and renders both math and Mermaid.
 

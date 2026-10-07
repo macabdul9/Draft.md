@@ -34,6 +34,14 @@ import type { Template } from '../components/WorkspacePicker';
 import type { FileAction } from '../components/Tree';
 import type { CommandItem } from '../components/Palette';
 import type { EditorMode } from '../editor/markdown-editor';
+import { noteTemplates } from '../editor/note-templates';
+import {
+  downloadRepository,
+  parseRepository,
+  writeRepository,
+  type RepositoryProgress,
+} from '../filesystem/repository';
+import type { RepositoryRequest } from '../components/RepositoryPicker';
 export interface Session {
   record: WorkspaceRecord;
   fs: WorkspaceFileSystem;
@@ -50,7 +58,9 @@ export function useWorkspace() {
     [revision, setRevision] = useState(0),
     [preferences, setPreferences] = useState<Preferences>(defaults),
     [ready, setReady] = useState(false);
-  const [dialog, setDialog] = useState<'workspace' | 'template' | 'settings' | null>(null),
+  const [dialog, setDialog] = useState<'workspace' | 'template' | 'settings' | 'repository' | null>(
+      null,
+    ),
     [palette, setPalette] = useState<'quick' | 'command' | 'search' | null>(null),
     [request, setRequest] = useState<RequestSpec | null>(null),
     [permission, setPermission] = useState<WorkspaceRecord | null>(null),
@@ -59,7 +69,7 @@ export function useWorkspace() {
     [sidebar, setSidebar] = useState(true),
     [showOutline, setShowOutline] = useState(true),
     [focus, setFocus] = useState(false),
-    [mode, setMode] = useState<EditorMode>('rich'),
+    [mode, setMode] = useState<EditorMode>('split'),
     [line, setLine] = useState(0),
     [favorites, setFavorites] = useState<string[]>([]),
     [recentNotes, setRecentNotes] = useState<string[]>([]),
@@ -148,9 +158,10 @@ export function useWorkspace() {
     message?: string,
     confirm?: string,
     danger = false,
+    choice?: RequestSpec['choice'],
   ) =>
     new Promise<string | null>((resolve) =>
-      setRequest({ title, initial, message, confirm, danger, resolve }),
+      setRequest({ title, initial, message, confirm, danger, choice, resolve }),
     );
   async function activate(record: WorkspaceRecord, fs: WorkspaceFileSystem) {
     const token = ++workspaceToken.current;
@@ -313,6 +324,57 @@ export function useWorkspace() {
       setBusy(false);
     }
   }
+  async function importRepository(
+    request: RepositoryRequest,
+    signal: AbortSignal,
+    progress: (value: RepositoryProgress) => void,
+  ) {
+    const source = parseRepository(request.url);
+    const name = path(request.name.trim());
+    if (!name || name.includes('/')) throw new Error('Use a single workspace folder name.');
+    // The picker must run before network awaits to retain browser user activation.
+    const root =
+      request.kind === 'local'
+        ? await window.showDirectoryPicker({ mode: 'readwrite' })
+        : undefined;
+    const snapshot = await downloadRepository(source, request.reference, signal, progress);
+    signal.throwIfAborted();
+    await latest.current.session?.controller.flush();
+    const id = crypto.randomUUID();
+    let fs: WorkspaceFileSystem;
+    let handle: FileSystemDirectoryHandle | undefined;
+    let destination = name;
+    if (root) {
+      destination = await uniquePath(new NativeFileSystemAdapter(root), name);
+      handle = await root.getDirectoryHandle(destination, { create: true });
+      fs = new NativeFileSystemAdapter(handle);
+    } else fs = await browserAdapter(id);
+    const record: WorkspaceRecord = {
+      id,
+      name: destination,
+      kind: request.kind,
+      handle,
+      lastOpened: Date.now(),
+    };
+    try {
+      await writeRepository(fs, snapshot, signal, progress);
+      signal.throwIfAborted();
+      await activate(record, fs);
+      const readme = snapshot.files.find((file) => /^readme\.(md|markdown)$/i.test(file.path));
+      const first = readme ?? snapshot.files.find((file) => /\.(md|markdown)$/i.test(file.path));
+      if (first) await openFile(first.path, 1, latest.current.session!);
+      notify(
+        `Imported ${snapshot.files.length} files from ${source.owner}/${source.repo} (${snapshot.commit.slice(0, 7)}).${snapshot.skipped ? ` Skipped ${snapshot.skipped} symbolic links or submodules.` : ''}`,
+      );
+    } catch (error) {
+      // Preserve partial imports and make them reopenable; never delete recovered bytes.
+      await remember(record).catch(() => undefined);
+      setRecent(await recentWorkspaces());
+      throw new Error(
+        `Import did not finish. Any saved files remain in “${destination}”, available in Recent Workspaces. ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
   async function openFile(filePath: string, targetLine = 0, current = latest.current.session) {
     if (!current) return;
     const token = ++openToken.current;
@@ -405,18 +467,27 @@ export function useWorkspace() {
           : selected;
         if (action === 'note') {
           const destination = await uniquePath(fs, join(folder, 'Untitled.md'));
-          await fs.createFile(destination);
+          let templateId = 'blank';
+          const name = await ask(
+            'Name your note',
+            basename(destination),
+            undefined,
+            'Create note',
+            false,
+            {
+              label: 'Template',
+              options: noteTemplates,
+              onChange: (value) => {
+                templateId = value;
+              },
+            },
+          );
+          if (!name) return;
+          const target = join(folder, name.endsWith('.md') ? name : `${name}.md`);
+          const template = noteTemplates.find((item) => item.id === templateId)!;
+          await fs.createFile(target, template.content);
           setRevision((v) => v + 1);
-          await openFile(destination);
-          const name = await ask('Name your note', basename(destination), undefined, 'Rename');
-          if (name && name !== basename(destination)) {
-            await current.controller.flush();
-            const target = join(folder, name.endsWith('.md') ? name : `${name}.md`);
-            await fs.move(destination, target);
-            await current.controller.close(destination);
-            setTabs((old) => old.filter((p) => p !== destination));
-            await openFile(target);
-          }
+          await openFile(target);
         } else {
           const name = await ask('New folder', 'Untitled folder');
           if (name) await fs.createDirectory(join(folder, name));
@@ -644,6 +715,7 @@ export function useWorkspace() {
           void fileAction('delete', { path: active, name: basename(active), kind: 'file' });
       },
     },
+    { name: 'Import Repository', run: () => setDialog('repository') },
     { name: 'Toggle Sidebar', run: () => setSidebar((v) => !v) },
     { name: 'Toggle Outline', run: () => setShowOutline((v) => !v) },
     { name: 'Toggle Preview', run: () => setMode((v) => (v === 'preview' ? 'rich' : 'preview')) },
@@ -761,6 +833,7 @@ export function useWorkspace() {
   };
 
   return {
+    importRepository,
     focus,
     session,
     setDialog,

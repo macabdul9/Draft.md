@@ -1,0 +1,336 @@
+from __future__ import annotations
+
+import argparse
+import functools
+import fcntl
+import hmac
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import json
+import os
+from pathlib import Path
+import secrets
+import shutil
+import subprocess
+import sys
+import threading
+import time
+from urllib.error import URLError
+from urllib.parse import unquote, urlsplit
+from urllib.request import Request, urlopen
+import webbrowser
+
+APP_DIR = Path(__file__).resolve().parent
+
+
+def metadata() -> dict:
+    return json.loads((APP_DIR / "version.json").read_text())
+
+
+def runtime_dir() -> Path:
+    default = Path(metadata()["install_dir"]) / "runtime"
+    return Path(os.environ.get("DRAFT_DATA_DIR", str(default))).expanduser()
+
+
+def read_state() -> dict | None:
+    try:
+        return json.loads((runtime_dir() / "server.json").read_text())
+    except FileNotFoundError:
+        return None
+
+
+def request_server(state: dict, stop: bool = False) -> dict | None:
+    url = f"http://127.0.0.1:{state['port']}/_dmd/{'stop' if stop else 'status'}"
+    request = Request(url, method="POST" if stop else "GET")
+    if stop:
+        request.add_header("X-Draft-Token", state["token"])
+    try:
+        with urlopen(request, timeout=2) as response:
+            result = json.load(response)
+            return result if result.get("instance") == state["instance"] else None
+    except (URLError, TimeoutError, OSError, ValueError):
+        return None
+
+
+class AppRequestHandler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, app_dir: Path, state: dict, **kwargs):
+        self.app_dir = app_dir.resolve()
+        self.state = state
+        super().__init__(*args, directory=str(self.app_dir), **kwargs)
+
+    def allowed_host(self) -> bool:
+        expected = f"127.0.0.1:{self.state['port']}"
+        if self.headers.get("Host") != expected:
+            self.send_error(403, "Use the launch URL printed by Draft.md.")
+            return False
+        return True
+
+    def send_json(self, value: dict) -> None:
+        data = json.dumps(value).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self) -> None:
+        if not self.allowed_host():
+            return
+        if urlsplit(self.path).path == "/_dmd/status":
+            self.send_json(
+                {
+                    "app": "Draft.md",
+                    "instance": self.state["instance"],
+                    "version": self.state["version"],
+                }
+            )
+            return
+        super().do_GET()
+
+    def do_HEAD(self) -> None:
+        if self.allowed_host():
+            super().do_HEAD()
+
+    def do_POST(self) -> None:
+        if not self.allowed_host():
+            return
+        origin = self.headers.get("Origin")
+        expected_origin = f"http://127.0.0.1:{self.state['port']}"
+        if (
+            urlsplit(self.path).path != "/_dmd/stop"
+            or origin not in (None, expected_origin)
+            or not hmac.compare_digest(
+                self.headers.get("X-Draft-Token", ""), self.state["token"]
+            )
+        ):
+            self.send_error(403)
+            return
+        self.send_json({"instance": self.state["instance"], "stopping": True})
+        threading.Thread(target=self.server.shutdown, daemon=True).start()
+
+    def translate_path(self, request_path: str) -> str:
+        decoded = unquote(urlsplit(request_path).path)
+        if "\x00" in decoded:
+            return str(self.app_dir / ".missing-file")
+        target = (self.app_dir / decoded.lstrip("/")).resolve()
+        if not target.is_relative_to(self.app_dir):
+            return str(self.app_dir / ".missing-file")
+        return str(target)
+
+    def list_directory(self, path: str):
+        self.send_error(404)
+        return None
+
+    def end_headers(self) -> None:
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
+
+def serve(port: int) -> None:
+    info = metadata()
+    folder = runtime_dir()
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lock = (folder / "server.lock").open("a")
+    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    state = {
+        "port": port,
+        "pid": os.getpid(),
+        "token": secrets.token_hex(32),
+        "instance": secrets.token_hex(16),
+        "version": info["version"],
+    }
+    handler = functools.partial(
+        AppRequestHandler, app_dir=APP_DIR / "dist", state=state
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", port), handler)
+    temporary = folder / "server.next.json"
+    temporary.write_text(json.dumps(state))
+    temporary.chmod(0o600)
+    temporary.replace(folder / "server.json")
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
+        current = read_state()
+        if current and current.get("instance") == state["instance"]:
+            (folder / "server.json").unlink(missing_ok=True)
+        lock.close()
+
+
+def start(port: int | None, open_browser: bool) -> None:
+    state = read_state()
+    live = bool(state and request_server(state))
+    if port is None:
+        port = state["port"] if live else 4387
+    if not 1024 <= port <= 65535:
+        raise ValueError("Choose a port between 1024 and 65535.")
+    if live:
+        if state["port"] != port:
+            raise ValueError(
+                f"Draft.md is already running on port {state['port']}. Stop it before changing ports."
+            )
+    else:
+        folder = runtime_dir()
+        folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with (folder / "server.log").open("a") as log:
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(APP_DIR / "cli.py"),
+                    "_serve",
+                    "--port",
+                    str(port),
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=log,
+                start_new_session=True,
+            )
+        for _ in range(50):
+            if process.poll() is not None:
+                raise OSError(
+                    f"Could not start on port {port}. See {folder / 'server.log'}."
+                )
+            state = read_state()
+            if state and state.get("pid") == process.pid and request_server(state):
+                break
+            time.sleep(0.1)
+        else:
+            process.terminate()
+            raise OSError("Server startup timed out.")
+    url = f"http://127.0.0.1:{port}"
+    print(f"Draft.md is running at {url}")
+    if open_browser and not webbrowser.open(url):
+        print("Open the URL above in your browser.")
+
+
+def stop() -> None:
+    state = read_state()
+    if not state or not request_server(state):
+        print("Draft.md is not running.")
+        return
+    if not request_server(state, stop=True):
+        raise OSError("The server did not accept the shutdown request.")
+    for _ in range(30):
+        if not request_server(state) and read_state() is None:
+            print(
+                "Draft.md stopped. Browser workspace data and local notes were retained."
+            )
+            return
+        time.sleep(0.1)
+    raise OSError("The server is still shutting down. Try status again.")
+
+
+def uninstall(confirmed: bool) -> None:
+    if not confirmed:
+        raise ValueError(
+            "Save your work, then run 'draft.md uninstall --yes'. This removes only app files and launchers."
+        )
+    stop()
+    info = metadata()
+    install_dir = Path(info["install_dir"])
+    if install_dir == Path.home() or not (install_dir / "current").is_symlink():
+        raise ValueError("Installation location is invalid; refusing to remove it.")
+    for name in ("draft.md", "dmd", "draftmd"):
+        command = Path(info["bin_dir"]) / name
+        if command.is_symlink() and command.resolve().is_relative_to(
+            install_dir.resolve()
+        ):
+            command.unlink()
+    # App-only files; never recurse over arbitrary files in a configured parent directory.
+    for folder in ("versions", "runtime"):
+        target = install_dir / folder
+        if target.is_symlink():
+            target.unlink()
+        elif target.exists():
+            shutil.rmtree(target)
+    for filename in ("current", "current.next", "launcher.sh"):
+        (install_dir / filename).unlink(missing_ok=True)
+    print("Draft.md uninstalled. Local notes and browser site data were retained.")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="draft.md",
+        description="Your work, in Markdown. Launch the local app and manage its installation.",
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"Draft.md {metadata()['version']}"
+    )
+    commands = parser.add_subparsers(dest="command")
+    for name in ("start", "run", "open", "restart", "_serve"):
+        command = commands.add_parser(name)
+        command.add_argument(
+            "--port", type=int, help="Default: existing server's port, otherwise 4387."
+        )
+        command.add_argument(
+            "--no-open",
+            action="store_true",
+            help="Start without opening a browser window.",
+        )
+    for name in ("stop", "status", "doctor", "version", "update"):
+        commands.add_parser(name)
+    remove = commands.add_parser("uninstall")
+    remove.add_argument("--yes", action="store_true")
+    args = parser.parse_args(sys.argv[1:] or ["start"])
+    try:
+        if args.command in ("start", "run", "open", "restart"):
+            if args.command == "restart":
+                state = read_state()
+                if args.port is None and state:
+                    args.port = state["port"]
+                stop()
+            start(args.port, not args.no_open)
+        elif args.command == "_serve":
+            serve(args.port or 4387)
+        elif args.command == "stop":
+            stop()
+        elif args.command == "status":
+            state = read_state()
+            live = request_server(state) if state else None
+            print(
+                f"Running Draft.md {live['version']} at http://127.0.0.1:{state['port']}"
+                if live
+                else "Draft.md is not running."
+            )
+        elif args.command == "doctor":
+            print(f"Python: {sys.version.split()[0]}")
+            print(f"App: {APP_DIR}")
+            print(
+                f"Static build: {'present' if (APP_DIR / 'dist/index.html').exists() else 'missing'}"
+            )
+            print(f"Runtime data: {runtime_dir()}")
+            print(
+                "Notes are opened through the browser folder picker; the launcher never reads them."
+            )
+        elif args.command == "version":
+            print(f"Draft.md {metadata()['version']}")
+        elif args.command == "update":
+            info = metadata()
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(APP_DIR / "installer.py"),
+                    "--base-url",
+                    info["release_base"],
+                    "--install-dir",
+                    info["install_dir"],
+                    "--bin-dir",
+                    info["bin_dir"],
+                ],
+                check=True,
+            )
+            print(
+                "Save your work, then run 'draft.md restart' to use the new app. Close app tabs to activate a waiting browser update."
+            )
+        elif args.command == "uninstall":
+            uninstall(args.yes)
+    except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
+        parser.exit(1, f"Draft.md: {error}\n")
+
+
+if __name__ == "__main__":
+    if sys.version_info < (3, 10):
+        raise SystemExit("Draft.md requires Python 3.10+.")
+    main()

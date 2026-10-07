@@ -16,7 +16,21 @@ import { HRPlugin } from 'draftly/src/plugins/hr-plugin.ts';
 import { ResearchPlugin } from './research-plugin';
 import type { DocumentController, DocumentRecord } from '../state/documents';
 import type { Preferences } from '../storage/preferences';
-export type EditorMode = 'rich' | 'source' | 'preview';
+import { editorShortcuts } from './shortcuts';
+export type EditorMode = 'split' | 'rich' | 'source' | 'preview';
+export function taskProgress(state: EditorState) {
+  let total = 0;
+  let completed = 0;
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name === 'TaskMarker') {
+        total++;
+        if (/\[[xX]\]/.test(state.sliceDoc(node.from, node.to))) completed++;
+      }
+    },
+  });
+  return { total, completed };
+}
 const typewriter = Facet.define<boolean, boolean>({ combine: (values) => values[0] ?? false });
 const mode = new Compartment(),
   settings = new Compartment(),
@@ -60,7 +74,7 @@ function modeExtensions(
   preferences: Preferences,
   click: (target: HTMLElement) => void,
 ): Extension {
-  if (value !== 'rich')
+  if (value !== 'rich' && value !== 'split')
     return [markdown({ codeLanguages: languages, extensions: GFM }), lineNumbers()];
   const extensions = draftly({
     history: false,
@@ -102,6 +116,8 @@ export function createEditor(
   onChange: () => void,
   click: (target: HTMLElement) => void,
   importImages: (files: File[]) => void,
+  referenceQuery: (query: string) => Promise<{ path: string }[]>,
+  onError: (message: string) => void,
 ): EditorView {
   const view = new EditorView({
     parent: container,
@@ -128,6 +144,7 @@ export function createEditor(
       }),
   });
   const handlers: Extension = [
+    editorShortcuts(doc.path, referenceQuery, onError),
     EditorView.updateListener.of((update) => {
       doc.editorState = update.state;
       if (update.docChanged) {

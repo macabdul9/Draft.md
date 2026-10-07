@@ -1,0 +1,47 @@
+name: Package local installer
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: npm ci
+      - run: shellcheck -s bash install.sh packaging/shell-helpers.sh
+      - run: npm run lint && npm test && npm run build
+      - run: python3 scripts/package-release.py
+        env:
+          DRAFT_RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+      - run: python3 -m unittest discover -s packaging/tests -v
+      - uses: actions/upload-artifact@v4
+        with:
+          name: draft-md-local-installation
+          path: release/
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: draft-md-local-installation
+          path: release/
+      - name: Publish versioned release assets
+        run: gh release create "$DRAFT_RELEASE_TAG" release/* --verify-tag --title "$DRAFT_RELEASE_TAG" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRAFT_RELEASE_TAG: ${{ github.ref_name }}

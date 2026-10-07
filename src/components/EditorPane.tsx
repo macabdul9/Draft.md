@@ -16,6 +16,7 @@ import {
   configureEditor,
   outline,
   insert,
+  taskProgress,
   type EditorMode,
   type Heading,
 } from '../editor/markdown-editor';
@@ -24,6 +25,7 @@ import type { Preferences } from '../storage/preferences';
 import { ensureDirectory, download } from '../filesystem/archive';
 import { join, uniquePath, relative, basename } from '../filesystem/adapter';
 import { editTable, type TableAction } from '../editor/table';
+import { blockCommands, tableCommands } from '../editor/commands';
 import { Dialog } from './Dialog';
 import { renderMarkdown, standaloneHTML, type RenderResult } from '../editor/render';
 interface Props {
@@ -36,6 +38,7 @@ interface Props {
   onFolder: (path: string) => void;
   onLink: (reference: string, wiki: boolean) => void;
   onError: (message: string) => void;
+  onReferenceQuery: (query: string) => Promise<{ path: string }[]>;
   onIndexed: (path: string, text: string) => void;
   focus: boolean;
   onFocus: () => void;
@@ -56,11 +59,13 @@ export default function EditorPane(props: Props) {
       characters: 0,
       headings: [] as Heading[],
       text: '',
+      tasks: { total: 0, completed: 0 },
     }),
     [save, setSave] = useState({ status: props.doc.status, error: props.doc.error }),
     [compare, setCompare] = useState(false),
     [exportMenu, setExportMenu] = useState(false),
     [writingMenu, setWritingMenu] = useState(false);
+  const [newTask, setNewTask] = useState('');
   useEffect(() => {
     const close = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -85,6 +90,7 @@ export default function EditorPane(props: Props) {
         characters: text.length,
         headings: p.doc.editorState ? outline(p.doc.editorState) : [],
         text,
+        tasks: p.doc.editorState ? taskProgress(p.doc.editorState) : { total: 0, completed: 0 },
       });
       p.onIndexed(p.doc.path, text);
       setRenderRevision(++revision.current);
@@ -136,6 +142,7 @@ export default function EditorPane(props: Props) {
   }
   useEffect(() => {
     const { doc, controller } = props;
+    setNewTask('');
     setSave({ status: doc.status, error: doc.error });
     const editor = createEditor(
       host.current!,
@@ -148,6 +155,8 @@ export default function EditorPane(props: Props) {
       (files) => {
         void importImages(files);
       },
+      (query) => active.current.onReferenceQuery(query),
+      (message) => active.current.onError(message),
     );
     view.current = editor;
     if (props.mode !== 'preview') editor.focus();
@@ -206,7 +215,7 @@ export default function EditorPane(props: Props) {
     };
   }, [props.controller]);
   useEffect(() => {
-    if (props.mode !== 'preview') return;
+    if (props.mode !== 'preview' && props.mode !== 'split') return;
     let alive = true,
       result: RenderResult | undefined;
     void renderMarkdown(
@@ -312,18 +321,6 @@ export default function EditorPane(props: Props) {
         'Place the cursor in a Markdown table. Keep at least one body row and one column.',
       );
   }
-  const snippets = [
-    ['Heading 1', '# '],
-    ['Heading 2', '## '],
-    ['Bullet list', '- '],
-    ['Task list', '- [ ] '],
-    ['Quote', '> '],
-    ['Code block', '```python\n\n```\n'],
-    ['Math block', '$\n\n$\n'],
-    ['Table', '| Model | Accuracy |\n| --- | ---: |\n| A | 72.1 |\n'],
-    ['Mermaid', '```mermaid\ngraph LR\n  A --> B\n```\n'],
-    ['Callout', '> [!HYPOTHESIS]\n> \n'],
-  ];
   const pathParts = props.doc.path.split('/');
   const diskLines = compare ? (props.doc.disk ?? '').split('\n') : [],
     draftLines = compare ? props.controller.content(props.doc).split('\n') : [];
@@ -356,12 +353,18 @@ export default function EditorPane(props: Props) {
             <Star size={15} fill={props.starred ? 'currentColor' : 'none'} />
           </button>
           <div class="mode-switch" role="group" aria-label="Editor mode">
-            {(['rich', 'source', 'preview'] as EditorMode[]).map((mode) => (
+            {(['split', 'rich', 'source', 'preview'] as EditorMode[]).map((mode) => (
               <button
                 class={props.mode === mode ? 'selected' : ''}
                 onClick={() => props.onMode(mode)}
               >
-                {mode === 'rich' ? 'Rich Markdown' : mode === 'source' ? 'Source' : 'Preview'}
+                {mode === 'split'
+                  ? 'Split'
+                  : mode === 'rich'
+                    ? 'Rich Markdown'
+                    : mode === 'source'
+                      ? 'Source'
+                      : 'Preview'}
               </button>
             ))}
           </div>
@@ -375,19 +378,11 @@ export default function EditorPane(props: Props) {
           </button>
           {writingMenu && (
             <div class="writing-menu context-menu">
-              {snippets.map(([name, text]) => (
-                <button onClick={() => writingInsert(text)}>{name}</button>
+              {blockCommands.map((command) => (
+                <button onClick={() => writingInsert(command.insert)}>{command.label}</button>
               ))}
               <div class="menu-divider" />
-              {(
-                [
-                  ['add-row', 'Add table row'],
-                  ['delete-row', 'Delete table row'],
-                  ['add-column', 'Add table column'],
-                  ['delete-column', 'Delete table column'],
-                  ['align', 'Cycle table alignment'],
-                ] as [TableAction, string][]
-              ).map(([action, label]) => (
+              {tableCommands.map(([action, label]) => (
                 <button onClick={() => tableAction(action)}>{label}</button>
               ))}
             </div>
@@ -484,16 +479,49 @@ export default function EditorPane(props: Props) {
           </button>
         </div>
       )}
+      {(meta.tasks.total > 0 || /^# To-do list(?:\r?\n|$)/i.test(meta.text)) && (
+        <form
+          class="task-tools"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const text = newTask.trim();
+            const editor = view.current;
+            if (!text || !editor) return;
+            const content = editor.state.doc.toString();
+            editor.dispatch({
+              changes: {
+                from: content.length,
+                insert: `${content.endsWith('\n') ? '' : '\n'}- [ ] ${text}\n`,
+              },
+            });
+            setNewTask('');
+          }}
+        >
+          <span>
+            {meta.tasks.completed} of {meta.tasks.total} completed
+          </span>
+          <input
+            aria-label="New task"
+            placeholder="Add a task…"
+            value={newTask}
+            onInput={(event) => setNewTask(event.currentTarget.value)}
+          />
+          <button type="submit" disabled={!newTask.trim()}>
+            Add task
+          </button>
+        </form>
+      )}
       <div class={`writing-layout ${props.focus ? 'focused' : ''}`}>
-        <div class="editor-column">
+        <div class={`editor-column ${props.mode === 'split' ? 'split-view' : ''}`}>
           <div
             ref={host}
             class="editor-host"
             style={{ display: props.mode === 'preview' ? 'none' : 'block' }}
           />
-          {props.mode === 'preview' && (
+          {(props.mode === 'preview' || props.mode === 'split') && (
             <article
               class="markdown preview"
+              aria-label="Markdown preview"
               ref={preview}
               onClick={(event) => {
                 const target = (event.target as HTMLElement).closest<HTMLElement>(

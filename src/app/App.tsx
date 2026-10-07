@@ -26,6 +26,7 @@ import { Tabs } from '../components/Tabs';
 import { Palette } from '../components/Palette';
 import { Settings } from '../components/Settings';
 import { useWorkspace } from './useWorkspace';
+import { RepositoryPicker } from '../components/RepositoryPicker';
 const EditorPane = lazy(() => import('../components/EditorPane'));
 const AssetViewer = lazy(() => import('../components/AssetViewer'));
 export default function App() {
@@ -79,6 +80,7 @@ export default function App() {
     exportAction,
     dialog,
     createWorkspace,
+    importRepository,
     palette,
     commands,
     request,
@@ -238,6 +240,7 @@ export default function App() {
                         void openLink(reference, wiki);
                       }}
                       onError={notify}
+                      onReferenceQuery={(query) => session.search.query(query, true)}
                       onIndexed={(p, text) => session.search.update(p, text)}
                       focus={focus}
                       onFocus={() => setFocus((v) => !v)}
@@ -273,7 +276,7 @@ export default function App() {
                   <p>
                     {indexing.count
                       ? 'Open a note from the sidebar, or start something new.'
-                      : 'Create your first research note.'}
+                      : 'Create your first note.'}
                   </p>
                   <button
                     class="primary"
@@ -331,6 +334,7 @@ export default function App() {
             void openRecent(record);
           }}
           onNew={() => setDialog('template')}
+          onRepository={() => setDialog('repository')}
           onClose={() => setDialog(null)}
         />
       )}{' '}
@@ -345,6 +349,9 @@ export default function App() {
       {dialog === 'settings' && (
         <Settings value={preferences} onChange={setPreferences} onClose={() => setDialog(null)} />
       )}{' '}
+      {dialog === 'repository' && (
+        <RepositoryPicker onImport={importRepository} onClose={() => setDialog(null)} />
+      )}
       {palette && (
         <Palette
           kind={palette}

@@ -2,6 +2,9 @@ import { useState } from 'preact/hooks';
 import { Dialog } from './Dialog';
 import type { Preferences } from '../storage/preferences';
 const shortcuts = [
+  ['\\', 'Insert blocks, lists, tasks, and table actions'],
+  ['@', 'Link a workspace note or insert a date'],
+  ['↑ / ↓ · Enter / Tab · Esc', 'Navigate, accept, or dismiss editor suggestions'],
   ['⌘ / Ctrl N', 'New note'],
   ['⌘ / Ctrl S', 'Save immediately'],
   ['⌘ / Ctrl O', 'Open workspace'],
@@ -167,7 +170,7 @@ export function Settings({
               {toggle('math', 'LaTeX math')}
               {toggle('mermaid', 'Mermaid diagrams')}
               {toggle('wiki', 'Wiki links')}
-              {toggle('callouts', 'Research callouts')}
+              {toggle('callouts', 'Callouts')}
               <p>Code is never executed. Remote images and embedded content are blocked.</p>
             </>
           )}

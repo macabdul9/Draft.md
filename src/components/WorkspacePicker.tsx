@@ -9,10 +9,12 @@ import {
   BookOpen,
   LayoutTemplate,
   ArrowUpRight,
+  GitFork,
 } from 'lucide-preact';
 import { Dialog } from './Dialog';
 import { loadPreference, storePreference, type WorkspaceRecord } from '../storage/indexed-db';
 import { supportsLocalFolders } from '../filesystem/native-filesystem';
+import { todoTemplate } from '../editor/note-templates';
 export interface Template {
   name: string;
   category: string;
@@ -27,6 +29,34 @@ export const templates: Template[] = [
     description: 'A clean page. Make it your own.',
     folders: [],
     files: { 'README.md': '# My workspace\n\n' },
+  },
+  {
+    name: 'To-do List',
+    category: 'Basic',
+    description: 'Add tasks, check them off, and keep track of what is done.',
+    folders: [],
+    files: { 'todo.md': todoTemplate },
+  },
+  {
+    name: 'Project Notes',
+    category: 'Basic',
+    description: 'Plans, decisions, and progress for any project.',
+    folders: ['notes', 'assets'],
+    files: {
+      'README.md':
+        '# Project notes\n\n## Overview\n\n## Tasks\n- [ ] Write the project plan\n\n## Decisions\n\n',
+      'notes/plan.md': '# Project plan\n\n## Goal\n\n## Milestones\n\n## Next steps\n',
+    },
+  },
+  {
+    name: 'Meeting Notes',
+    category: 'Basic',
+    description: 'Agendas, decisions, and action items.',
+    folders: ['meetings'],
+    files: {
+      'README.md':
+        '# Meeting notes\n\n## Agenda\n\n## Discussion\n\n## Decisions\n\n## Action items\n- [ ] \n',
+    },
   },
   {
     name: 'Research Project',
@@ -95,12 +125,14 @@ export function WorkspacePicker({
   onOpenFolder,
   onRecent,
   onNew,
+  onRepository,
   onClose,
 }: {
   recent: WorkspaceRecord[];
   onOpenFolder: () => void;
   onRecent: (workspace: WorkspaceRecord) => void;
   onNew: () => void;
+  onRepository: () => void;
   onClose: () => void;
 }) {
   const [section, setSection] = useState('Recent');
@@ -175,6 +207,9 @@ export function WorkspacePicker({
         </div>
       </div>
       <footer>
+        <button onClick={onRepository}>
+          <GitFork size={16} /> Import Repository
+        </button>
         <button onClick={onClose}>Cancel</button>
         <button class="primary" disabled={!supportsLocalFolders()} onClick={onOpenFolder}>
           Open Folder
@@ -196,7 +231,7 @@ export function TemplatePicker({
   }, []);
   const [category, setCategory] = useState('All Templates'),
     [selected, setSelected] = useState(templates[0]),
-    [name, setName] = useState('Research'),
+    [name, setName] = useState('Workspace'),
     [kind, setKind] = useState<'local' | 'browser'>(supportsLocalFolders() ? 'local' : 'browser');
   return (
     <Dialog title="New workspace" onClose={onClose} wide>
@@ -219,7 +254,7 @@ export function TemplatePicker({
         </nav>
         <div class="picker-main">
           <h3>A place for your next idea</h3>
-          <p>Start simple, or give your research a little structure.</p>
+          <p>Start simple, or give your work a little structure.</p>
           <div class="template-grid">
             {templates
               .filter(

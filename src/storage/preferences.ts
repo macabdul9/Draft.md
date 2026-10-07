@@ -18,7 +18,7 @@ export interface Preferences {
   typewriter: boolean;
 }
 export const defaults: Preferences = {
-  theme: 'system',
+  theme: 'light',
   font: 'sans',
   fontSize: 16,
   lineHeight: 1.8,

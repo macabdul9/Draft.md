@@ -13,9 +13,14 @@
     "test:e2e": "playwright test",
     "preview": "vite preview --host 127.0.0.1",
     "benchmark": "node scripts/benchmark.mjs",
+    "screenshot": "node scripts/screenshots.mjs",
+    "package:release": "python3 scripts/package-release.py",
+    "test:cli": "python3 -m unittest discover -s packaging/tests -v",
+    "stats:downloads": "python3 scripts/download-stats.py",
     "format": "prettier --write src tests e2e scripts"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "6.20.3",
     "@codemirror/commands": "^6.10.1",
     "@codemirror/lang-markdown": "^6.5.0",
     "@codemirror/language": "^6.12.1",

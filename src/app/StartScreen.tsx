@@ -6,6 +6,7 @@ import {
   HardDrive,
   ArrowUpRight,
   ShieldCheck,
+  GitFork,
 } from 'lucide-preact';
 import { supportsLocalFolders } from '../filesystem/native-filesystem';
 
@@ -30,7 +31,7 @@ export function StartScreen({
         <h1>
           Draft<span>.md</span>
         </h1>
-        <p class="tagline">Your research, in Markdown.</p>
+        <p class="tagline">Your work, in Markdown.</p>
         <div class="start-actions">
           <button
             class="primary"
@@ -45,6 +46,10 @@ export function StartScreen({
           <button onClick={() => setDialog('template')}>
             <Plus size={17} />
             New Workspace
+          </button>
+          <button onClick={() => setDialog('repository')}>
+            <GitFork size={17} />
+            Import Repository
           </button>
         </div>
         {!supportsLocalFolders() && (

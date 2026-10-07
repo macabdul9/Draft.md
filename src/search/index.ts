@@ -14,7 +14,17 @@ export function searchDocuments(
   filenamesOnly = false,
 ): SearchResult[] {
   query = query.toLocaleLowerCase().trim();
-  if (!query) return [];
+  if (!query)
+    return filenamesOnly
+      ? Array.from(documents)
+          .slice(0, 100)
+          .map((doc) => ({
+            path: doc.path,
+            line: 1,
+            snippet: doc.text.split('\n')[0].slice(0, 180),
+            score: 0,
+          }))
+      : [];
   const results: SearchResult[] = [];
   for (const doc of documents) {
     const lowerPath = doc.path.toLocaleLowerCase();

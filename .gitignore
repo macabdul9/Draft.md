@@ -8,6 +8,10 @@ node_modules/
 .pnp.*
 
 # Production output and build/tool caches
+/release/
+__pycache__/
+*.py[cod]
+.ruff_cache/
 /dist/
 /dist-ssr/
 *.tsbuildinfo

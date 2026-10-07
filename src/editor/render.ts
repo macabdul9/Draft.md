@@ -2,6 +2,7 @@ import { Marked, type Token, type Tokens } from 'marked';
 import DOMPurify from 'dompurify';
 import { resolveAsset, type WorkspaceFileSystem } from '../filesystem/adapter';
 import type { Preferences } from '../storage/preferences';
+import { renderLatexTable } from './latex-table';
 export const escapeHTML = (text: string) =>
   text.replace(
     /[&<>"']/g,
@@ -106,6 +107,19 @@ export async function renderMarkdown(
           const id = `diagram-${diagrams.size}`;
           diagrams.set(id, token.text);
           return `<div class="mermaid-block" data-diagram="${id}">Rendering diagram…</div>`;
+        }
+        if (language === 'latex' && /\\begin\{(?:table|tabular)\}/.test(token.text)) {
+          try {
+            return renderLatexTable(token.text, (source) =>
+              katex
+                ? mathPlaceholder(
+                    katex.renderToString(source, { throwOnError: false, trust: false }),
+                  )
+                : escapeHTML(`$${source}$`),
+            );
+          } catch (error) {
+            return `<div class="latex-table-error" role="status">LaTeX table could not be rendered: ${escapeHTML(error instanceof Error ? error.message : String(error))}</div><pre><code class="language-latex">${escapeHTML(token.text)}</code></pre>`;
+          }
         }
         const code =
           highlighter && highlighter.getLanguage(language)

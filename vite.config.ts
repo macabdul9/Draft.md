@@ -11,9 +11,9 @@ export default defineConfig({
       manifest: {
         name: 'Draft.md',
         short_name: 'Draft.md',
-        description: 'Your research, in Markdown.',
-        theme_color: '#191a1d',
-        background_color: '#191a1d',
+        description: 'Your work, in Markdown.',
+        theme_color: '#fafaf8',
+        background_color: '#fafaf8',
         display: 'standalone',
         icons: [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },

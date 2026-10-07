@@ -51,6 +51,11 @@ export interface RequestSpec {
   label?: string;
   confirm?: string;
   danger?: boolean;
+  choice?: {
+    label: string;
+    options: { id: string; name: string }[];
+    onChange: (value: string) => void;
+  };
   resolve: (value: string | null) => void;
 }
 export function RequestDialog({ request, onClose }: { request: RequestSpec; onClose: () => void }) {
@@ -73,6 +78,19 @@ export function RequestDialog({ request, onClose }: { request: RequestSpec; onCl
       >
         <div class="dialog-body">
           {request.message && <p>{request.message}</p>}
+          {request.choice && (
+            <label>
+              {request.choice.label}
+              <select
+                aria-label={request.choice.label}
+                onChange={(event) => request.choice?.onChange(event.currentTarget.value)}
+              >
+                {request.choice.options.map((option) => (
+                  <option value={option.id}>{option.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
           {request.initial !== undefined && (
             <label>
               {request.label ?? 'Name'}

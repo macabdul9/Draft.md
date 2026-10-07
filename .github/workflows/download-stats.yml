@@ -1,0 +1,37 @@
+name: Update recorded downloads
+on:
+  schedule:
+    - cron: '17 8 * * *'
+  release:
+    types: [published]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: download-statistics
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: python3 scripts/download-stats.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Commit the statistics snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add stats/downloads.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Update recorded download counts'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi

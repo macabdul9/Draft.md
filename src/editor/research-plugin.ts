@@ -106,7 +106,11 @@ export class ResearchPlugin extends DraftlyPlugin {
           }
           if (node.name === 'FencedCode') {
             const source = view.state.sliceDoc(node.from, node.to);
-            if (/^```mermaid/.test(source) && this.preferences.mermaid)
+            if (
+              (/^```mermaid/.test(source) && this.preferences.mermaid) ||
+              (/^(`{3,}|~{3,})latex\s*\n/.test(source) &&
+                /\\begin\{(?:table|tabular)\}/.test(source))
+            )
               ctx.decorations.push(
                 Decoration.widget({
                   widget: new ResearchWidget(
