@@ -141,7 +141,7 @@ export default function EditorPane(props: Props) {
     }
   }
   useEffect(() => {
-    const { doc, controller } = props;
+    const { doc, controller, onIndexed } = props;
     setNewTask('');
     setSave({ status: doc.status, error: doc.error });
     const editor = createEditor(
@@ -173,6 +173,7 @@ export default function EditorPane(props: Props) {
     return () => {
       unsubscribe();
       clearTimeout(timer.current);
+      onIndexed(doc.path, editor.state.doc.toString());
       doc.scroll = editor.scrollDOM.scrollTop;
       doc.editorState = editor.state;
       doc.getText = undefined;
