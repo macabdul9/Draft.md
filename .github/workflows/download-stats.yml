@@ -4,6 +4,9 @@ on:
     - cron: '17 8 * * *'
   release:
     types: [published]
+  workflow_run:
+    workflows: [Package local installer]
+    types: [completed]
   workflow_dispatch:
 permissions:
   contents: write
@@ -12,6 +15,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   update:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event != 'pull_request')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

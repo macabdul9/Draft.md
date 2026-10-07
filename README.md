@@ -2,7 +2,7 @@
 
 A private, local-first Markdown workspace for notes, documentation, plans, and drafts. **Your work, in Markdown.** Open a folder, edit ordinary Markdown, and save directly to the same files. No account, uploads, analytics, or AI service.
 
-[![Recorded downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmacabdul9%2FDraft.md%2Fmain%2Fstats%2Fdownloads.json)](docs/distribution.md#download-statistics)
+[![Recorded downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmacabdul9%2FDraft.md%2Fmain%2Fstats%2Fdownloads.json%3Fbadge%3D2&cacheSeconds=300)](docs/distribution.md#download-statistics)
 
 > Draft.md never requires your notes to be uploaded to a server. In supported browsers, it works directly with a directory you choose on your computer.
 
