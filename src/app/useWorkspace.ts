@@ -120,9 +120,9 @@ export function useWorkspace() {
     root.style.setProperty('--editor-size', `${preferences.fontSize}px`);
     root.style.setProperty('--editor-line-height', String(preferences.lineHeight));
     if (session) session.controller.delay = preferences.autosave;
-    void storePreference('ui', preferences).catch(() => undefined);
+    if (ready) void storePreference('ui', preferences).catch(() => undefined);
     return () => media.removeEventListener('change', apply);
-  }, [preferences]);
+  }, [preferences, ready]);
   useEffect(() => {
     if (!session) return;
     const record = { ...session.record, tabs, active, favorites, recent: recentNotes };

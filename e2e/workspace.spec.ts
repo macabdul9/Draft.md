@@ -583,6 +583,29 @@ test('empty guide, block and reference shortcuts, and default light theme', asyn
   await expect(editor).not.toContainText('\\Add table row');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption('dark');
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise<string>((resolve, reject) => {
+            const request = indexedDB.open('draft-md', 1);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+              const db = request.result;
+              const read = db.transaction('preferences').objectStore('preferences').get('ui');
+              read.onsuccess = () => {
+                resolve(read.result?.theme ?? '');
+                db.close();
+              };
+              read.onerror = () => {
+                reject(read.error);
+                db.close();
+              };
+            };
+          }),
+      ),
+    )
+    .toBe('dark');
   await page.keyboard.press('Escape');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
