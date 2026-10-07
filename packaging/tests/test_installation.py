@@ -300,6 +300,31 @@ class InstallationTests(unittest.TestCase):
 
 
 class DownloadStatisticsTests(unittest.TestCase):
+    def test_writes_matching_count_snapshot_and_badge(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "stats").mkdir()
+            (root / "stats/external-downloads.json").write_text('{"sources": []}')
+            for count, published, expected in [
+                (0, False, "not released"),
+                (0, True, "0"),
+                (7, True, "7"),
+            ]:
+                with (
+                    self.subTest(count=count, published=published),
+                    patch.object(stats, "ROOT", root),
+                    patch.object(
+                        stats, "release_downloads", return_value=(count, published)
+                    ),
+                ):
+                    stats.main()
+                    report = json.loads((root / "stats/downloads.json").read_text())
+                    badge = (root / "stats/downloads.svg").read_text()
+                    self.assertEqual(report["message"], expected)
+                    self.assertIn(
+                        f"<title>recorded downloads: {expected}</title>", badge
+                    )
+
     def test_keeps_downloads_distinct_from_active_users_and_rejects_overlap(
         self,
     ) -> None:

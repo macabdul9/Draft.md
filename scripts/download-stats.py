@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from html import escape
 import json
 import os
 from pathlib import Path
@@ -68,6 +69,25 @@ def aggregate_sources(downloads: int, sources: list[dict]) -> tuple[int, list[di
     return downloads, sources
 
 
+def download_badge(message: str, published: bool) -> str:
+    label_width = 120
+    value_width = max(30, len(message) * 7 + 12)
+    width = label_width + value_width
+    label = escape(f"recorded downloads: {message}", quote=True)
+    color = "#007ec6" if published else "#9f9f9f"
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="20" '
+        f'viewBox="0 0 {width} 20" role="img" aria-label="{label}">'
+        f"<title>{label}</title>"
+        f'<rect width="{width}" height="20" rx="3" fill="{color}"/>'
+        f'<path d="M3 0h{label_width - 3}v20H3a3 3 0 0 1-3-3V3a3 3 0 0 1 3-3z" fill="#555"/>'
+        '<g fill="#fff" text-anchor="middle" font-family="Verdana,Arial,sans-serif" font-size="11">'
+        f'<text x="{label_width / 2}" y="14">recorded downloads</text>'
+        f'<text x="{label_width + value_width / 2}" y="14">{escape(message)}</text>'
+        "</g></svg>\n"
+    )
+
+
 def main() -> None:
     downloads, published = release_downloads()
     sources = json.loads((ROOT / "stats/external-downloads.json").read_text())[
@@ -86,6 +106,9 @@ def main() -> None:
         "coverage": "GitHub app release assets (curl installer, CLI updates, and direct downloads) plus explicitly recorded non-overlapping sources. Not successful installs or unique users.",
     }
     (ROOT / "stats/downloads.json").write_text(json.dumps(report, indent=2) + "\n")
+    (ROOT / "stats/downloads.svg").write_text(
+        download_badge(report["message"], published or bool(external))
+    )
     print(f"Recorded downloads: {report['message']}")
 
 

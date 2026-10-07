@@ -2,7 +2,7 @@
 
 A private, local-first Markdown workspace for notes, documentation, plans, and drafts. **Your work, in Markdown.** Open a folder, edit ordinary Markdown, and save directly to the same files. No account, uploads, analytics, or AI service.
 
-[![Recorded downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmacabdul9%2FDraft.md%2Fmain%2Fstats%2Fdownloads.json%3Fbadge%3D2&cacheSeconds=300)](docs/distribution.md#download-statistics)
+[![Recorded downloads](stats/downloads.svg)](docs/distribution.md#download-statistics)
 
 > Draft.md never requires your notes to be uploaded to a server. In supported browsers, it works directly with a directory you choose on your computer.
 
@@ -108,7 +108,7 @@ All aliases support the same commands. The server listens only on `127.0.0.1`, b
 
 ## Download statistics
 
-The README badge shows **recorded downloads**, not successful installs or unique users. A scheduled GitHub workflow sums application release asset downloads across releases and refreshes `stats/downloads.json`. Curl installs, CLI updates, and direct downloads all fetch the same app archive and therefore share that count. Installer scripts, manifests, and checksum downloads are excluded to avoid counting one installation several times.
+The README badge shows **recorded downloads**, not successful installs or unique users. A GitHub workflow sums application release asset downloads across releases and refreshes `stats/downloads.json` and its matching SVG badge after successful release checks and daily. Curl installs, CLI updates, and direct downloads all fetch the same app archive and therefore share that count. Installer scripts, manifests, and checksum downloads are excluded to avoid counting one installation several times.
 
 Additional distribution sources can be included through `stats/external-downloads.json` when they provide cumulative download counts with a source URL, observation date, and confirmation that they do not overlap the existing totals. Chrome Web Store active-user counts are a different metric and cannot be added as downloads. No extension is published yet, so no extension count is invented.
 
