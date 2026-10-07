@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-07T17:04:58.382Z",
+  "hardware": {
+    "platform": "darwin",
+    "release": "25.4.0",
+    "cpu": "Apple M4",
+    "logicalCores": 10,
+    "ramGB": 24
+  },
+  "browser": "154.0.8037.99",
+  "method": "Production static build on localhost. Performance.now around CodeMirror dispatchTransactions for text-changing transactions; real keyboard typing (20ms between keys). These measure synchronous editing work, excluding layout/paint, asynchronous renderers and OS disk latency.",
+  "measurements": {
+    "coldShellMs": 74.33083299999998,
+    "firstEditorMs": 230.69895800000006,
+    "ordinaryRichTyping": {
+      "transactions": 86,
+      "p50Ms": 0.6000000238418579,
+      "p95Ms": 0.8999999761581421,
+      "maxMs": 1.2999999523162842
+    },
+    "largeRichTyping": {
+      "transactions": 86,
+      "p50Ms": 5.899999976158142,
+      "p95Ms": 6.699999928474426,
+      "maxMs": 7.100000023841858
+    },
+    "workspaceTreeMs": 129.05812499999956,
+    "treeRows": 70,
+    "editorDuringIndexingMs": 149.49733299999934,
+    "indexStatusWhenUsable": "Indexing locally · 400 files",
+    "fullIndexMs": 1633.0042919999978,
+    "warmActivation": {
+      "p50Ms": 34.440708999998606,
+      "p95Ms": 96.79233399999794,
+      "note": "Includes Playwright click scheduling and a locator visibility check; not a pure in-app stopwatch."
+    },
+    "searchWithDebounceMs": 194.92762500000026
+  },
+  "workloads": {
+    "ordinaryCharacters": 2213,
+    "largeCharacters": 243430,
+    "tabs": 8,
+    "workspaceFiles": 5000
+  },
+  "generated": true,
+  "bundle": {
+    "initialFiles": [
+      "assets/index-C98eLcxR.js"
+    ],
+    "initialJavaScriptGzipBytes": 32303,
+    "totalJavaScriptGzipBytes": 1701582,
+    "totalJavaScriptRawBytes": 5409691,
+    "editorGzipBytes": 238948,
+    "entry": "assets/index-C98eLcxR.js"
+  }
+}

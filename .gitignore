@@ -1,0 +1,61 @@
+# Installed dependencies and package-manager caches
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/install-state.gz
+.pnp.*
+
+# Production output and build/tool caches
+/dist/
+/dist-ssr/
+*.tsbuildinfo
+.vite/
+.vite-temp/
+.cache/
+.eslintcache
+.stylelintcache
+vite.config.*.timestamp-*
+
+# Test coverage and browser-test artifacts
+/coverage/
+.nyc_output/
+*.lcov
+/test-results/
+/playwright-report/
+/playwright/.cache/
+/blob-report/
+
+# Local environment/configuration; commit sanitized examples only
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.local
+
+# Logs, runtime files, diagnostic dumps, and package archives
+logs/
+*.log
+*.pid
+*.pid.lock
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+*.tgz
+.node_repl_history
+
+# Personal editor settings and temporary files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.orig
+
+# macOS and Windows metadata
+.DS_Store
+._*
+.Spotlight-V100/
+.Trashes/
+Thumbs.db
+Desktop.ini
+draft-md-full-build-prompt.md
