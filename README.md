@@ -44,6 +44,8 @@ Once the installer assets have been published:
 curl -fsSL https://github.com/macabdul9/Draft.md/releases/latest/download/install.sh | bash
 ```
 
+Maintainers: pushing to `main` runs lint, unit/browser tests, the production build, and installer checks. If they pass, a new version in `package.json` automatically becomes a tagged GitHub release with installer assets. Existing complete releases are preserved. See the [CI/CD and release guide](docs/distribution.md#publish-a-release) for version bumps and repairs.
+
 Launch using any of these aliases:
 
 ```sh

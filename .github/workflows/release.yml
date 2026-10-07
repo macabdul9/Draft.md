@@ -1,7 +1,10 @@
 name: Package local installer
 on:
   push:
+    branches: [main]
     tags: ['v*']
+  pull_request:
+    branches: [main]
   release:
     types: [published]
   workflow_dispatch:
@@ -12,11 +15,32 @@ on:
         type: string
 permissions:
   contents: read
+concurrency:
+  group: installer-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   package:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.metadata.outputs.tag }}
+      version: ${{ steps.metadata.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+      - name: Resolve release version
+        id: metadata
+        env:
+          REQUESTED_TAG: ${{ inputs.release_tag || github.event.release.tag_name || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const { version } = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const tag = process.env.REQUESTED_TAG || `v${version}`;
+          if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Use a stable x.y.z package version.');
+          if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(tag)) throw new Error('Invalid release tag.');
+          if (tag.startsWith('v') && tag !== `v${version}`) throw new Error(`Tag ${tag} must match v${version}.`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${tag}\nversion=${version}\n`);
+          JS
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -27,20 +51,33 @@ jobs:
       - run: npm ci
       - run: shellcheck -s bash install.sh packaging/shell-helpers.sh
       - run: npm run lint && npm test && npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-test-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
       - run: python3 scripts/package-release.py
         env:
-          DRAFT_RELEASE_TAG: ${{ startsWith(inputs.release_tag, 'v') && inputs.release_tag || startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          DRAFT_RELEASE_TAG: ${{ startsWith(steps.metadata.outputs.tag, 'v') && steps.metadata.outputs.tag || '' }}
       - run: python3 -m unittest discover -s packaging/tests -v
       - uses: actions/upload-artifact@v4
         with:
           name: draft-md-local-installation
           path: release/
   publish:
-    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     needs: package
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    concurrency:
+      group: publish-installer
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -50,11 +87,23 @@ jobs:
       - name: Publish versioned release assets
         run: |
           set -euo pipefail
-          if gh release view "$DRAFT_RELEASE_TAG" >/dev/null 2>&1; then
+          if gh release view "$DRAFT_RELEASE_TAG" --json assets > "$RUNNER_TEMP/draft-release.json"; then
+            if [[ "$GITHUB_EVENT_NAME" == 'push' && "$GITHUB_REF" == 'refs/heads/main' ]] && node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const release = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/draft-release.json`, 'utf8'));
+          const names = new Set(release.assets.map(asset => asset.name));
+          const required = ['install.sh', 'installer.py', 'release.json', 'SHA256SUMS', `draft-md-${process.env.DRAFT_VERSION}.tar.gz`];
+          process.exit(required.every(name => names.has(name)) ? 0 : 1);
+          JS
+            then
+              echo "Release $DRAFT_RELEASE_TAG already has all assets. Bump package.json to publish another version."
+              exit 0
+            fi
             gh release upload "$DRAFT_RELEASE_TAG" release/* --clobber
           else
-            gh release create "$DRAFT_RELEASE_TAG" release/* --verify-tag --title "$DRAFT_RELEASE_TAG" --generate-notes
+            gh release create "$DRAFT_RELEASE_TAG" release/* --target "$GITHUB_SHA" --title "$DRAFT_RELEASE_TAG" --generate-notes
           fi
         env:
           GH_TOKEN: ${{ github.token }}
-          DRAFT_RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name || github.ref_name }}
+          DRAFT_RELEASE_TAG: ${{ needs.package.outputs.tag }}
+          DRAFT_VERSION: ${{ needs.package.outputs.version }}

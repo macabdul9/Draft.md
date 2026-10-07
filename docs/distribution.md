@@ -29,17 +29,35 @@ The server serves only its installed `dist/` directory, never the installation's
 
 ## Publish a release
 
-The repository is `macabdul9/Draft.md`. The release workflow packages on a manual dispatch and uploads a reviewable workflow artifact. A pushed version tag or a published release additionally publishes installer assets. Publishing a tag is a remote action; the local scripts do not push or create a release themselves.
+The repository is `macabdul9/Draft.md`. GitHub Actions provides continuous integration (CI: automatically checking changes) and continuous delivery (CD: packaging and publishing a checked version). The workflow uses GitHub's built-in token; no personal access token is required.
+
+| Event                      | Checks and packaging                                                                  | Publishing                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Pull request to `main`     | Lint, unit tests, strict build, browser workflows, ShellCheck, Python installer tests | No release; token has read-only repository access                                               |
+| Push to `main`             | Same checks, plus an installation artifact                                            | Automatically publish `v` + the version in `package.json`; create the tag at that push's commit |
+| Push a `v*` tag            | Same checks; tag must match package version                                           | Publish or repair that release                                                                  |
+| Publish a release manually | Same checks against its tagged source                                                 | Attach installer assets                                                                         |
+| Run workflow manually      | Same checks against the selected branch/tag                                           | Publish only when `release_tag` is supplied                                                     |
+
+A failed check stops publication. Browser failures upload a report and trace artifact. Publishing jobs run one at a time. If an automatic `main` run finds all five assets already attached for that version, it skips publication; later commits need a new version to become a new release. An incomplete release is repaired automatically. Explicit tag/release/manual runs can replace assets for a repair.
+
+For a normal new release, update the version and commit it with your changes:
+
+```sh
+npm version patch --no-git-tag-version
+git add package.json package-lock.json
+git commit -m "Bump release version"
+git pull --rebase
+git push origin main
+```
+
+For example, `0.0.1` becomes `0.0.2`. Use `minor` or `major` instead of `patch` when appropriate. The workflow creates `v0.0.2`, publishes the compiled archive, bootstrap, installer, manifest, and checksums, and the unchanged curl URL selects the latest stable release. Installed users run `dmd update` and then restart after saving. GitHub Actions must be enabled and repository policies must allow the publishing job's `contents: write` permission.
 
 For an existing release with no assets, push the updated workflow, then open **Actions → Package local installer → Run workflow**, choose the branch to build (normally `main`), and enter `v0.0.1` in **release_tag**. This builds the selected branch and attaches the installer assets to the existing release. This also lets a corrected branch repair a failed release without moving its tag. Leave the input empty to build an artifact without publishing. Non-version release names such as `beta` retain the app version from `package.json`; `v` tags must match the package version.
 
 Alternatively, upload all five files from the local `release/` folder to the existing release through **Releases → Edit → Attach binaries**, then save it. Required assets are `install.sh`, `installer.py`, `release.json`, `SHA256SUMS`, and `draft-md-VERSION.tar.gz`. GitHub's automatic source archives do not contain a ready-to-install build.
 
-1. Review and commit the changes. Update the package version and lockfile when changing versions.
-2. Run the app checks, browser workflows, Python checks, ShellCheck, and CLI tests.
-3. Push the reviewed branch and a matching tag, such as `v0.0.1` for package version `0.0.1`.
-4. Allow `.github/workflows/release.yml` to finish and verify the five release assets.
-5. Test the public install command in a fresh profile or with custom installation directories.
+After publication, verify the five release assets and test the public install command in a fresh profile or with custom installation directories:
 
 ```sh
 curl -fsSL https://github.com/macabdul9/Draft.md/releases/latest/download/install.sh | bash
