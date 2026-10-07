@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "label": "recorded downloads",
-  "message": "0",
+  "message": "3",
   "color": "blue",
-  "updated_at": "2026-10-07T20:58:31.635145+00:00",
-  "total": 0,
-  "github_release_downloads": 0,
+  "updated_at": "2026-10-07T21:03:45.377348+00:00",
+  "total": 3,
+  "github_release_downloads": 3,
   "external_sources": [],
   "coverage": "GitHub app release assets (curl installer, CLI updates, and direct downloads) plus explicitly recorded non-overlapping sources. Not successful installs or unique users."
 }
