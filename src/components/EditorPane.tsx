@@ -11,6 +11,8 @@ import {
   PlusSquare,
 } from 'lucide-preact';
 import type { EditorView } from '@codemirror/view';
+import { Transaction } from '@codemirror/state';
+import { isolateHistory } from '@codemirror/commands';
 import {
   createEditor,
   configureEditor,
@@ -27,6 +29,8 @@ import { join, uniquePath, relative, basename } from '../filesystem/adapter';
 import { editTable, type TableAction } from '../editor/table';
 import { blockCommands, tableCommands } from '../editor/commands';
 import { Dialog } from './Dialog';
+import AgentWriter from './AgentWriter';
+import type { AgentProvider } from '../agents/providers';
 import { renderMarkdown, standaloneHTML, type RenderResult } from '../editor/render';
 interface Props {
   doc: DocumentRecord;
@@ -66,6 +70,76 @@ export default function EditorPane(props: Props) {
     [exportMenu, setExportMenu] = useState(false),
     [writingMenu, setWritingMenu] = useState(false);
   const [newTask, setNewTask] = useState('');
+  const agentRunning = useRef(false);
+  const [agent, setAgent] = useState<{
+    prompt: string;
+    engine?: AgentProvider;
+    from: number;
+    to: number;
+    text: string;
+    context: string;
+    selection: string;
+    document: DocumentRecord;
+    started?: boolean;
+    blocked?: boolean;
+    time?: number;
+    prefix?: string;
+  }>();
+  function openAgent() {
+    if (agentRunning.current) return;
+    const editor = view.current;
+    const text = editor?.state.doc.toString() || props.controller.content(props.doc);
+    const range = editor?.state.selection.main;
+    const position = range?.to ?? text.length;
+    const line = editor?.state.doc.lineAt(position).text || '';
+    const mention = line.match(
+      /^\s*@(agent|ollama|llama\.cpp|vllm-engine|sglang|codex|claudecode|chatgpt|claude)(?:\s+(.*))?$/,
+    );
+    const unsupported = line.match(/^\s*@(hermes)\b/i);
+    if (unsupported) {
+      props.onError(
+        `@${unsupported[1]} is not connected in this build. Use @agent or a configured local engine.`,
+      );
+      return;
+    }
+    const lineRange = editor?.state.doc.lineAt(position);
+    const instruction = !!mention || (!!range?.empty && !!line.trim());
+    const from = instruction ? lineRange!.from : (range?.from ?? position);
+    const to = instruction ? lineRange!.to : position;
+    const preceding = text.slice(Math.max(0, from - 4500), from);
+    const following = text.slice(to, to + 1500);
+    setAgent({
+      prompt: mention?.[2] || (instruction && !mention ? line.trim() : ''),
+      engine: mention && mention[1] !== 'agent' ? (mention[1] as AgentProvider) : undefined,
+      from,
+      to,
+      text,
+      context: preceding + (following ? '\n[Cursor]\n' + following : ''),
+      selection: instruction ? '' : text.slice(from, to),
+      document: props.doc,
+    });
+    agentRunning.current = true;
+  }
+  useEffect(() => {
+    const run = (event: KeyboardEvent) => {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key === 'Enter' &&
+        !event.shiftKey &&
+        !event.altKey &&
+        host.current?.contains(event.target as Node)
+      ) {
+        event.preventDefault();
+        openAgent();
+      }
+    };
+    window.addEventListener('keydown', run, true);
+    return () => window.removeEventListener('keydown', run, true);
+  }, [props.doc]);
+  useEffect(() => {
+    agentRunning.current = false;
+    setAgent(undefined);
+  }, [props.doc]);
   useEffect(() => {
     const close = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -562,8 +636,59 @@ export default function EditorPane(props: Props) {
           </aside>
         )}
       </div>
-      {!props.focus && (
-        <div class="status-bar">
+      {(!props.focus || agent) && (
+        <div class={`status-bar ${props.focus ? 'agent-focus-status' : ''}`}>
+          {agent && (
+            <AgentWriter
+              initialPrompt={agent.prompt}
+              initialEngine={agent.engine}
+              context={agent.context}
+              selection={agent.selection}
+              onError={props.onError}
+              onClose={() => {
+                view.current?.dispatch({ annotations: isolateHistory.of('after') });
+                agentRunning.current = false;
+                setAgent(undefined);
+              }}
+              onInsert={(text, force, partial) => {
+                if (agent.document !== props.doc || !view.current) return false;
+                const current = view.current.state.doc.toString();
+                if (!force && (agent.blocked || current !== agent.text)) {
+                  agent.blocked = true;
+                  return false;
+                }
+                const from = force ? view.current.state.selection.main.to : agent.from;
+                const to = force ? from : agent.to;
+                const prefix =
+                  agent.prefix ??
+                  (!agent.started &&
+                  from > 0 &&
+                  !current.slice(0, from).endsWith('\n') &&
+                  from === to
+                    ? '\n\n'
+                    : '');
+                agent.prefix = prefix;
+                if (!agent.time) agent.time = Date.now();
+                const insertText = prefix + text;
+                view.current.dispatch({
+                  changes: { from, to, insert: insertText },
+                  selection: { anchor: from + insertText.length },
+                  scrollIntoView: true,
+                  annotations: [
+                    Transaction.time.of(agent.time),
+                    ...(!agent.started || force ? [isolateHistory.of('before')] : []),
+                  ],
+                  userEvent: 'input.type.agent',
+                });
+                agent.started = true;
+                agent.to = from + insertText.length;
+                agent.text = view.current.state.doc.toString();
+                if (!partial) view.current.focus();
+                return true;
+              }}
+            />
+          )}
+
           <span>Markdown</span>
           <span>UTF-8</span>
           <span>{meta.words.toLocaleString()} words</span>

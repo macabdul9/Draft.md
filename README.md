@@ -1,6 +1,6 @@
 # Draft.md
 
-A private, local-first Markdown workspace for notes, documentation, plans, and drafts. **Your work, in Markdown.** Open a folder, edit ordinary Markdown, and save directly to the same files. No account, uploads, analytics, or AI service.
+A private, local-first Markdown workspace for notes, documentation, plans, and drafts. **Your work, in Markdown.** Open a folder, edit ordinary Markdown, and save directly to the same files. No account or analytics. Optional AI writing sends only the provided instruction and bounded note context to the provider you invoke.
 
 [![Recorded downloads](stats/downloads.svg)](docs/distribution.md#download-statistics)
 
@@ -13,6 +13,7 @@ A private, local-first Markdown workspace for notes, documentation, plans, and d
 - [Run locally](#run-locally)
 - [Install and launch](#install-and-launch)
 - [CLI commands](#cli-commands)
+- [AI Agent](#ai-agent)
 - [Download statistics](#download-statistics)
 - [Chrome extension feasibility](#chrome-extension-feasibility)
 - [Development commands](#development-commands)
@@ -56,7 +57,7 @@ draft.md start
 dmd run
 ```
 
-The launcher opens **http://127.0.0.1:4387** and serves only the installed application assets. Notes are still opened through the browser's folder picker and written by the app. The CLI never reads or serves your workspace files. Keep the same address, port, and browser profile to retain access to browser workspaces and recent folder handles.
+The launcher opens **http://127.0.0.1:4387**, serves the installed application, and provides authenticated local inference-server controls. Notes are still opened through the browser's folder picker and written by the app. The CLI never reads or serves your workspace files. Keep the same address, port, and browser profile to retain access to browser workspaces and recent folder handles.
 
 App versions live under `~/.local/share/draft-md/versions/`; launchers live in `~/.local/bin/`. The installer prints a PATH instruction if needed:
 
@@ -157,6 +158,20 @@ DRAFT_BROWSER_CHANNEL=chrome npm run test:e2e
 ```
 
 The final browser checks in this environment used Chrome 154.0.8037.99. A Chromium 153 build crashed while deserializing an OPFS directory handle in a native-adapter test fixture; that isolated browser failure did not occur in installed Chrome. The native fixture uses browser-owned handles rather than an interactive operating-system folder picker. See [verification](docs/verification.md) for what was and was not exercised.
+
+## AI Agent
+
+Write an instruction directly in your note and press **⌘/Ctrl+Enter**. The agent replaces that line with its writing using your saved model, streaming text directly into the note as it arrives. Press **Escape** to stop and keep the partial draft. Select text first to improve it, or use the shortcut on a blank line to continue the note. A single **Undo** reverses the generated edit. No agent panel, popup, or toolbar button is required.
+
+`@agent write something here` uses your default. `@codex` and `@claudecode` use your installed CLIs; `@chatgpt` and `@claude` use signed-in website tabs through the optional browser extension. See [provider setup and current limits](docs/agent-providers.md). `@ollama`, `@llama.cpp`, `@vllm-engine`, and `@sglang` use a specific configured engine. Typing alone does not run inference. **Esc** cancels client waiting and insertion. While running, a small status appears in the document's status bar.
+
+Change your model only when needed through **Settings → AI Agent**. For GGUF files choose llama.cpp, then browse or paste a path and check it. For vLLM/SGLang choose a Safetensors model directory. A verified path becomes your saved default without starting the server manually. Ollama offers an installed-model selector. The model, path, and non-secret options persist in this browser; writing reconnects or starts the runtime when needed.
+
+**LiquidAI/LFM2.5-2.6B** is the preferred candidate, with four other small-model options. On first `@ollama` use, the agent downloads this default if missing, shows a spinner and download percentage in the footer, then streams writing into the note. Later requests reuse it. A model explicitly selected in settings takes precedence; another installed model is never silently substituted. Model metadata must verify **4B parameters or fewer**. Only supported small Ollama models download automatically when invoked. Runtime installation and model files for other engines remain manual. Advanced settings contain runtime paths, ports, and logs.
+
+The [tiny writing harness](docs/agent-writing-harness.md) supplies writing rules and bounded context from the current note and selection. Other workspace files are not included. If you change the note while generation is in progress, the draft is preserved for manual insertion. The server endpoint you selected receives this context, including when it is remote. API keys stay in bridge memory and are never saved with the model preference.
+
+Existing servers remain running when Draft.md stops; owned servers are cleaned up by `dmd stop`. Browser-only deployments and development/preview servers do not launch inference processes. Local Codex/Claude Code adapters and the experimental website extension are included; multi-step tool execution remains planned. See [AI Agent setup and local-build instructions](docs/local-models.md).
 
 ## Development commands
 

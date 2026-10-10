@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><title>Draft.md Website Writing</title>
+  <style>
+    body {
+      font: 14px system-ui;
+      width: 280px;
+      padding: 12px;
+      color: #243021;
+      background: #fafaf8;
+    }
+    button {
+      padding: 8px 12px;
+      margin: 4px 0;
+      cursor: pointer;
+    }
+    p {
+      line-height: 1.5;
+    }
+    #origin {
+      overflow-wrap: anywhere;
+    }
+  </style>
+  <h3>Draft.md Website Writing</h3>
+  <p>
+    Connect the current Draft.md tab once. Your ChatGPT and Claude sessions stay on their websites.
+  </p>
+  <p id="origin"></p>
+  <button id="connect">Connect this tab</button
+  ><button id="disconnect">Disconnect this tab</button>
+  <p id="status" role="status"></p>
+  <script type="module" src="popup.js"></script>
+</html>

@@ -45,6 +45,7 @@ export function editorShortcuts(
       for (const [key, description] of [
         ['\\', 'Headings, lists, tasks, tables, code, and more'],
         ['@', 'Link a workspace note or insert today’s date'],
+        ['@agent · ⌘ / Ctrl Enter', 'Write with your remembered AI Agent'],
         ['↑ / ↓ · Enter / Tab · Esc', 'Choose a suggestion, insert it, or dismiss'],
         ['⌘ / Ctrl B · I · K', 'Bold, italic, and link'],
         ['⌘ / Ctrl S', 'Save immediately'],
@@ -142,6 +143,23 @@ export function editorShortcuts(
             },
           });
           const options = [
+            ...[
+              'agent',
+              'ollama',
+              'llama.cpp',
+              'vllm-engine',
+              'sglang',
+              'codex',
+              'claudecode',
+              'chatgpt',
+              'claude',
+            ].map((engine) =>
+              insertValue(
+                engine,
+                `@${engine} `,
+                'AI Agent · type an instruction, then ⌘/Ctrl+Enter to write',
+              ),
+            ),
             insertValue('Today', date, 'Local date'),
             insertValue('Timestamp', now.toLocaleString(), 'Local date and time'),
           ].filter((item) => item.label.toLowerCase().includes(match.query.toLowerCase()));

@@ -1,9 +1,11 @@
 import { useState } from 'preact/hooks';
 import { Dialog } from './Dialog';
 import type { Preferences } from '../storage/preferences';
+import { AgentSettings } from './AgentSettings';
 const shortcuts = [
   ['\\', 'Insert blocks, lists, tasks, and table actions'],
   ['@', 'Link a workspace note or insert a date'],
+  ['@agent · ⌘ / Ctrl Enter', 'Write directly with your saved AI Agent'],
   ['↑ / ↓ · Enter / Tab · Esc', 'Navigate, accept, or dismiss editor suggestions'],
   ['⌘ / Ctrl N', 'New note'],
   ['⌘ / Ctrl S', 'Save immediately'],
@@ -45,14 +47,17 @@ export function Settings({
     <Dialog title="Settings" onClose={onClose} wide>
       <div class="picker-layout settings-layout">
         <nav>
-          {['Appearance', 'Editor', 'Files', 'Markdown', 'Keyboard', 'Advanced'].map((s) => (
-            <button class={s === section ? 'selected' : ''} onClick={() => setSection(s)}>
-              {s}
-            </button>
-          ))}
+          {['Appearance', 'Editor', 'Files', 'Markdown', 'AI Agent', 'Keyboard', 'Advanced'].map(
+            (s) => (
+              <button class={s === section ? 'selected' : ''} onClick={() => setSection(s)}>
+                {s}
+              </button>
+            ),
+          )}
         </nav>
         <div class="picker-main">
           <h3>{section}</h3>
+          {section === 'AI Agent' && <AgentSettings />}
           {section === 'Appearance' && (
             <>
               <label>

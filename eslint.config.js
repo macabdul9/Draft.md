@@ -5,6 +5,7 @@ export default ts.config(
   { ignores: ['dist', 'node_modules', 'playwright-report', 'test-results'] },
   js.configs.recommended,
   ...ts.configs.recommended,
+  { files: ['extension/**/*.js'], languageOptions: { globals: { chrome: 'readonly' } } },
   {
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
     rules: {

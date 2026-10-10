@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import secrets
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -18,6 +19,10 @@ from urllib.error import URLError
 from urllib.parse import unquote, urlsplit
 from urllib.request import Request, urlopen
 import webbrowser
+
+from local_models import LocalServers
+from agent_processes import AgentProcesses, prepared_writing
+from model_files import browse_model, inspect_model
 
 APP_DIR = Path(__file__).resolve().parent
 
@@ -52,9 +57,19 @@ def request_server(state: dict, stop: bool = False) -> dict | None:
 
 
 class AppRequestHandler(SimpleHTTPRequestHandler):
-    def __init__(self, *args, app_dir: Path, state: dict, **kwargs):
+    def __init__(
+        self,
+        *args,
+        app_dir: Path,
+        state: dict,
+        local_servers: LocalServers,
+        agents: AgentProcesses,
+        **kwargs,
+    ):
         self.app_dir = app_dir.resolve()
         self.state = state
+        self.local_servers = local_servers
+        self.agents = agents
         super().__init__(*args, directory=str(self.app_dir), **kwargs)
 
     def allowed_host(self) -> bool:
@@ -64,9 +79,9 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             return False
         return True
 
-    def send_json(self, value: dict) -> None:
+    def send_json(self, value: dict, status: int = 200) -> None:
         data = json.dumps(value).encode()
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
@@ -76,7 +91,22 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         if not self.allowed_host():
             return
-        if urlsplit(self.path).path == "/_dmd/status":
+        path = urlsplit(self.path).path
+        if path == "/_dmd/bridge":
+            if self.headers.get("X-Draft-Client") != "1" or not self.allowed_origin():
+                self.send_error(403)
+                return
+            self.send_json({"token": self.state["token"], "version": 1})
+            return
+        if path == "/_dmd/agents":
+            if self.authorized():
+                self.send_json(self.agents.snapshot())
+            return
+        if path == "/_dmd/models":
+            if self.authorized():
+                self.send_json(self.local_servers.snapshot())
+            return
+        if path == "/_dmd/status":
             self.send_json(
                 {
                     "app": "Draft.md",
@@ -87,23 +117,155 @@ class AppRequestHandler(SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
+    def allowed_origin(self) -> bool:
+        expected = f"http://127.0.0.1:{self.state['port']}"
+        return self.headers.get("Origin") in (None, expected) and self.headers.get(
+            "Sec-Fetch-Site"
+        ) not in ("cross-site", "same-site")
+
+    def authorized(self) -> bool:
+        if not self.allowed_origin() or not hmac.compare_digest(
+            self.headers.get("X-Draft-Token", "").encode(), self.state["token"].encode()
+        ):
+            self.send_error(403)
+            return False
+        return True
+
     def do_HEAD(self) -> None:
         if self.allowed_host():
             super().do_HEAD()
 
+    def stream_writing(
+        self, payload: dict, download: bool = False, agent: bool = False
+    ) -> None:
+        if agent:
+            events = self.agents.stream(
+                payload.get("provider", ""),
+                payload.get("requestId", ""),
+                payload.get("prompt", ""),
+                payload.get("context", ""),
+                payload.get("selection", ""),
+            )
+        elif download:
+            events = self.local_servers.pull(
+                payload["engine"], payload.get("model", "")
+            )
+        else:
+            events = self.local_servers.stream(
+                payload["engine"],
+                payload.get("model", ""),
+                payload.get("prompt", ""),
+                payload.get("context", ""),
+                payload.get("selection", ""),
+            )
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        try:
+            try:
+                for event in events:
+                    self.wfile.write((json.dumps(event) + "\n").encode())
+                    self.wfile.flush()
+            except (ValueError, OSError) as error:
+                self.wfile.write((json.dumps({"error": str(error)}) + "\n").encode())
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            events.close()
+
     def do_POST(self) -> None:
         if not self.allowed_host():
             return
-        origin = self.headers.get("Origin")
-        expected_origin = f"http://127.0.0.1:{self.state['port']}"
-        if (
-            urlsplit(self.path).path != "/_dmd/stop"
-            or origin not in (None, expected_origin)
-            or not hmac.compare_digest(
-                self.headers.get("X-Draft-Token", ""), self.state["token"]
-            )
-        ):
-            self.send_error(403)
+        if not self.authorized():
+            return
+        path = urlsplit(self.path).path
+        if path.startswith(("/_dmd/models/", "/_dmd/agents/")):
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if (
+                    not 0 < length <= 65536
+                    or self.headers.get_content_type() != "application/json"
+                ):
+                    raise ValueError("Send a JSON request smaller than 64 KB.")
+                payload = json.loads(self.rfile.read(length))
+                if not isinstance(payload, dict):
+                    raise ValueError("Send a JSON object.")
+                if path.startswith("/_dmd/agents/"):
+                    if path == "/_dmd/agents/cancel":
+                        request_id = payload.get("requestId", "")
+                        if (
+                            not isinstance(request_id, str)
+                            or not 16 <= len(request_id) <= 80
+                        ):
+                            raise ValueError("Invalid writing request identifier.")
+                        self.agents.cancel(request_id)
+                        self.send_json({"cancelled": True})
+                    elif path == "/_dmd/agents/prepare":
+                        self.send_json(
+                            {
+                                "text": prepared_writing(
+                                    payload.get("prompt", ""),
+                                    payload.get("context", ""),
+                                    payload.get("selection", ""),
+                                )
+                            }
+                        )
+                    elif path == "/_dmd/agents/generate-stream":
+                        self.stream_writing(payload, agent=True)
+                    else:
+                        self.send_error(404)
+                    return
+                if not isinstance(payload.get("engine"), str):
+                    raise ValueError("Choose an inference engine.")
+                for field in ("model", "executable", "baseUrl", "apiKey"):
+                    if field in payload and not isinstance(payload[field], str):
+                        raise ValueError(f"{field} must be text.")
+                engine = payload["engine"]
+                if path == "/_dmd/models/start":
+                    result = self.local_servers.start(engine, payload)
+                elif path == "/_dmd/models/connect":
+                    result = self.local_servers.connect(engine, payload)
+                elif path == "/_dmd/models/stop":
+                    result = self.local_servers.stop(engine)
+                elif path == "/_dmd/models/inspect":
+                    result = inspect_model(payload.get("model", ""), engine)
+                elif path == "/_dmd/models/browse":
+                    selected = browse_model(engine)
+                    result = (
+                        inspect_model(selected, engine)
+                        if selected
+                        else {"cancelled": True}
+                    )
+                elif path == "/_dmd/models/select":
+                    result = self.local_servers.select(engine, payload.get("model", ""))
+                elif path == "/_dmd/models/pull-stream":
+                    self.stream_writing(payload, download=True)
+                    return
+                elif path == "/_dmd/models/generate-stream":
+                    self.stream_writing(payload)
+                    return
+                elif path == "/_dmd/models/generate":
+                    result = self.local_servers.generate(
+                        engine,
+                        payload.get("model", ""),
+                        payload.get("prompt", ""),
+                        payload.get("context", ""),
+                        payload.get("selection", ""),
+                    )
+                else:
+                    self.send_error(404)
+                    return
+                self.send_json(result)
+            except (ValueError, OSError) as error:
+                self.send_json({"error": str(error)}, status=400)
+            return
+        if path != "/_dmd/stop":
+            self.send_error(404)
             return
         self.send_json({"instance": self.state["instance"], "stopping": True})
         threading.Thread(target=self.server.shutdown, daemon=True).start()
@@ -140,8 +302,14 @@ def serve(port: int) -> None:
         "instance": secrets.token_hex(16),
         "version": info["version"],
     }
+    local_servers = LocalServers()
+    agents = AgentProcesses()
     handler = functools.partial(
-        AppRequestHandler, app_dir=APP_DIR / "dist", state=state
+        AppRequestHandler,
+        app_dir=APP_DIR / "dist",
+        state=state,
+        local_servers=local_servers,
+        agents=agents,
     )
     server = ThreadingHTTPServer(("127.0.0.1", port), handler)
     temporary = folder / "server.next.json"
@@ -149,8 +317,16 @@ def serve(port: int) -> None:
     temporary.chmod(0o600)
     temporary.replace(folder / "server.json")
     try:
+
+        def shutdown(_signum: int, _frame: object) -> None:
+            threading.Thread(target=server.shutdown, daemon=True).start()
+
+        signal.signal(signal.SIGTERM, shutdown)
+        signal.signal(signal.SIGINT, shutdown)
         server.serve_forever()
     finally:
+        agents.close()
+        local_servers.close()
         server.server_close()
         current = read_state()
         if current and current.get("instance") == state["instance"]:
@@ -212,7 +388,7 @@ def stop() -> None:
         return
     if not request_server(state, stop=True):
         raise OSError("The server did not accept the shutdown request.")
-    for _ in range(30):
+    for _ in range(180):
         if not request_server(state) and read_state() is None:
             print(
                 "Draft.md stopped. Browser workspace data and local notes were retained."
