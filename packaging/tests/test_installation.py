@@ -15,9 +15,10 @@ import sys
 import tarfile
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import patch
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -48,7 +49,16 @@ class InstallationTests(unittest.TestCase):
         (payload / "dist/test.js").write_text("console.log('Draft.md');")
         (payload / "version.json").write_text(json.dumps({"version": "1.0.0"}))
         (payload / "LICENSE").write_text("MIT License")
-        for name in ("cli.py", "installer.py", "shell-helpers.sh"):
+        for name in (
+            "cli.py",
+            "local_models.py",
+            "model_files.py",
+            "writing_harness.py",
+            "agent_processes.py",
+            "model_catalog.json",
+            "installer.py",
+            "shell-helpers.sh",
+        ):
             (payload / name).write_bytes((ROOT / "packaging" / name).read_bytes())
         with tarfile.open(self.archive, "w:gz") as archive:
             archive.add(payload, arcname="draft-md")
@@ -237,6 +247,69 @@ class InstallationTests(unittest.TestCase):
             self.assertIn(b"Your work", response.read())
         with urlopen(url + "/test.js", timeout=2) as response:
             self.assertIn("javascript", response.headers["Content-Type"])
+        with urlopen(
+            Request(url + "/_dmd/bridge", headers={"X-Draft-Client": "1"}), timeout=2
+        ) as response:
+            self.assertEqual(json.load(response)["token"], state["token"])
+            self.assertIn("no-store", response.headers["Cache-Control"])
+        with urlopen(
+            Request(url + "/_dmd/models", headers={"X-Draft-Token": state["token"]}),
+            timeout=2,
+        ) as response:
+            self.assertEqual(
+                set(json.load(response)["engines"]),
+                {"ollama", "llama.cpp", "vllm-engine", "sglang"},
+            )
+        with urlopen(
+            Request(url + "/_dmd/agents", headers={"X-Draft-Token": state["token"]}),
+            timeout=2,
+        ) as response:
+            self.assertEqual(set(json.load(response)), {"codex", "claudecode"})
+        with urlopen(
+            Request(
+                url + "/_dmd/agents/prepare",
+                data=json.dumps(
+                    {"prompt": "Write todos", "context": "Book notes"}
+                ).encode(),
+                headers={
+                    "X-Draft-Token": state["token"],
+                    "Content-Type": "application/json",
+                },
+            ),
+            timeout=2,
+        ) as response:
+            self.assertIn("Draft.md capabilities", json.load(response)["text"])
+        with urlopen(
+            Request(
+                url + "/_dmd/agents/generate-stream",
+                data=json.dumps(
+                    {
+                        "provider": "unsupported",
+                        "requestId": "test-000000000000000",
+                        "prompt": "Write",
+                    }
+                ).encode(),
+                headers={
+                    "X-Draft-Token": state["token"],
+                    "Content-Type": "application/json",
+                },
+            ),
+            timeout=2,
+        ) as response:
+            self.assertIn("application/x-ndjson", response.headers["Content-Type"])
+            self.assertIn("local CLI", json.loads(response.readline())["error"])
+        invalid = Request(
+            url + "/_dmd/models/start",
+            data=b'{"engine":"unknown"}',
+            headers={
+                "X-Draft-Token": state["token"],
+                "Content-Type": "application/json",
+            },
+        )
+        with self.assertRaises(HTTPError) as raised:
+            urlopen(invalid, timeout=2)
+        self.assertEqual(raised.exception.code, 400)
+        raised.exception.close()
         for path in (
             "/../cli.py",
             "/%2e%2e/cli.py",
@@ -249,6 +322,38 @@ class InstallationTests(unittest.TestCase):
         for request in (
             Request(url, headers={"Host": "evil.example"}),
             Request(url + "/_dmd/stop", method="POST"),
+            Request(url + "/_dmd/bridge"),
+            Request(url + "/_dmd/models"),
+            Request(url + "/_dmd/agents"),
+            Request(
+                url + "/_dmd/agents/prepare",
+                data=b'{"prompt":"Write"}',
+                headers={
+                    "X-Draft-Token": state["token"],
+                    "Origin": "https://evil.example",
+                    "Content-Type": "application/json",
+                },
+            ),
+            Request(
+                url + "/_dmd/bridge",
+                headers={"X-Draft-Client": "1", "Origin": "https://evil.example"},
+            ),
+            Request(
+                url + "/_dmd/models",
+                headers={
+                    "X-Draft-Token": state["token"],
+                    "Origin": "https://evil.example",
+                },
+            ),
+            Request(
+                url + "/_dmd/models/start",
+                data=b'{"engine":"ollama"}',
+                headers={
+                    "X-Draft-Token": state["token"],
+                    "Origin": "https://evil.example",
+                    "Content-Type": "application/json",
+                },
+            ),
             Request(
                 url + "/_dmd/stop",
                 method="POST",
@@ -262,7 +367,41 @@ class InstallationTests(unittest.TestCase):
                 urlopen(request, timeout=2)
             self.assertEqual(raised.exception.code, 403)
             raised.exception.close()
+        fake_engine = self.folder / "fake-ollama"
+        fixture = (ROOT / "packaging/tests/fixtures/model_server.py").read_text()
+        fake_engine.write_text(f"#!{sys.executable}\n" + fixture)
+        fake_engine.chmod(0o700)
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            model_port = listener.getsockname()[1]
+        launch = Request(
+            url + "/_dmd/models/start",
+            data=json.dumps(
+                {"engine": "ollama", "port": model_port, "executable": str(fake_engine)}
+            ).encode(),
+            headers={
+                "X-Draft-Token": state["token"],
+                "Content-Type": "application/json",
+            },
+        )
+        with urlopen(launch, timeout=2) as response:
+            self.assertTrue(json.load(response)["engines"]["ollama"]["owned"])
+        deadline = time.monotonic() + 6
+        while True:
+            with urlopen(
+                Request(
+                    url + "/_dmd/models", headers={"X-Draft-Token": state["token"]}
+                ),
+                timeout=2,
+            ) as response:
+                entry = json.load(response)["engines"]["ollama"]
+            if entry["state"] == "running":
+                break
+            self.assertLess(time.monotonic(), deadline, entry)
+            time.sleep(0.05)
         self.cli("stop")
+        with self.assertRaises(URLError):
+            urlopen(f"http://127.0.0.1:{model_port}/api/tags", timeout=1)
         self.assertIn("not running", self.cli("status").stdout)
         self.assertNotEqual(self.cli("uninstall", check=False).returncode, 0)
         self.cli("uninstall", "--yes")

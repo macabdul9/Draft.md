@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Draft.md Website Writing",
+  "version": "0.1.0",
+  "description": "Write inline in Draft.md using your signed-in ChatGPT or Claude website tabs.",
+  "permissions": ["storage", "activeTab"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "Connect Draft.md" },
+  "content_scripts": [
+    {
+      "matches": ["http://127.0.0.1/*", "http://localhost/*"],
+      "js": ["editor.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://chatgpt.com/*", "https://claude.ai/*"],
+      "js": ["provider.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    { "resources": ["dom.js"], "matches": ["https://chatgpt.com/*", "https://claude.ai/*"] }
+  ]
+}

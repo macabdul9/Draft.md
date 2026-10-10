@@ -25,6 +25,7 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
+      aria-label={title}
       class={`dialog ${wide ? 'wide' : ''}`}
       onCancel={(event) => {
         event.preventDefault();

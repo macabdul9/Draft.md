@@ -1,0 +1,46 @@
+{
+  "default": "LiquidAI/LFM2.5-2.6B",
+  "maxParameters": 4000000000,
+  "models": [
+    {
+      "id": "LiquidAI/LFM2.5-2.6B",
+      "label": "LFM2.5-2.6B",
+      "parameters": 2697198592,
+      "source": "https://huggingface.co/LiquidAI/LFM2.5-2.6B",
+      "gguf": "https://huggingface.co/LiquidAI/LFM2.5-2.6B-GGUF",
+      "ollama": "LiquidAI/lfm2.5-2.6b:q4_k_m"
+    },
+    {
+      "id": "LiquidAI/LFM2.5-1.2B-Instruct",
+      "label": "LFM2.5-1.2B-Instruct",
+      "parameters": 1170340608,
+      "source": "https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct",
+      "gguf": "https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF",
+      "ollama": "LiquidAI/lfm2.5-1.2b-instruct"
+    },
+    {
+      "id": "Qwen/Qwen3.5-2B",
+      "label": "Qwen3.5-2B",
+      "parameters": 2274069824,
+      "source": "https://huggingface.co/Qwen/Qwen3.5-2B",
+      "gguf": "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF",
+      "ollama": "qwen3.5:2b"
+    },
+    {
+      "id": "Qwen/Qwen3.5-0.8B",
+      "label": "Qwen3.5-0.8B",
+      "parameters": 873438784,
+      "source": "https://huggingface.co/Qwen/Qwen3.5-0.8B",
+      "gguf": "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF",
+      "ollama": "qwen3.5:0.8b"
+    },
+    {
+      "id": "openbmb/MiniCPM5-2B",
+      "label": "MiniCPM5-2B",
+      "parameters": 2516756480,
+      "source": "https://huggingface.co/openbmb/MiniCPM5-2B",
+      "gguf": "https://huggingface.co/openbmb/MiniCPM5-2B-GGUF",
+      "ollama": "openbmb/minicpm5-2b:q4_1"
+    }
+  ]
+}
